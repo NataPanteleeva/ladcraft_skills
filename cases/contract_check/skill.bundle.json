@@ -1,0 +1,9 @@
+{
+  "skillAppId": "ivcdTlugDRjllzJINXN92",
+  "slug": "contract_check_skill",
+  "forkedFrom": "ezRJPXTos56fSBwMJ5hwr",
+  "marketplaceTitle": "27. Проверка договоров",
+  "version": "1.0.0",
+  "type": "instruction-only",
+  "bundleSource": "cases/contract_check/27-proverka-dogovorov.application.ladcraft"
+}

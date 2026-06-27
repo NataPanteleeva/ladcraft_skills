@@ -1,0 +1,7 @@
+{
+  "name": "doc_compare-build",
+  "private": true,
+  "dependencies": {
+    "yaml": "^2.7.0"
+  }
+}

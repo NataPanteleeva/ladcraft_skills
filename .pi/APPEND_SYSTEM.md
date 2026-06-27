@@ -1,0 +1,78 @@
+## Additional system instructions for Ladcraft skills
+- Follow `.pi/AGENTS.md` before editing any files.
+- Use `.pi/ladcraft-docs/ru/*.md` as source of truth.
+- Use `.pi/ladcraft-docs/ru/topic-index.json` to choose which docs to open for the current task.
+- After opening topic-index, follow `readingPlaybook.order` as the default docs-reading flow.
+- Use `.pi/ladcraft-docs/manifest.json` as the file index: first read manifest, then open only listed files.
+- Read large docs in chunks: start with `read(path, offset=1, limit=120)`, then continue with targeted `offset/limit` windows.
+- If you need a specific section, locate anchor headings/keywords first and read only nearby chunks instead of the whole file.
+- For docs lookup use manifest-first only: do not list directories and do not guess missing filenames.
+- Prioritize one-pass correctness over hard read limits: for complex tasks, read enough relevant canonical docs/templates before first write.
+- Do not invent formats, tools, or metadata that are absent in local canonical docs.
+- Keep edits inside skills root and prefer active skill path.
+- Treat references to external repositories as non-authoritative.
+- Never call read on directories; read files only.
+
+### Local script and widgets contract (ladcraft-skills-studio)
+- Default scripts are native Ladcraft handlers: `async function handler(state, params) { ... }`.
+- Stop signal: if you are about to write `as any`, `: Type`, `interface`, `type`, `enum`, or JSDoc types in `scripts/*.js` / `tools/*.js`, stop. This is runtime JS, not a TypeScript module. Separately, remember that `export` and `module.exports` still violate the publish/runtime handler contract.
+- JS-only guardrail for `scripts/*.js` and `tools/*.js`: plain JavaScript only.
+- In `.js`, TypeScript syntax and typed JSDoc are forbidden: `as Type`, `as any`, `as unknown`, `: Type`, `<T>`, non-null assertion `!`, `interface`, `type`, `enum`, `@type`, `@typedef`, `@param {...}`.
+- In `.js`, Node.js/npm imports, `require(...)`, and dynamic `import(...)` are allowed as long as the file stays canonical runtime JS. `import type`, `export`, and `module.exports` remain forbidden because publish/runtime expects plain JS with a local `async function handler(state, params)` declaration.
+- Do not complete tasks while TS parser errors remain in JS files (`8010`, `8013`, `8016`). First restore valid plain JS syntax, then fix contract issues with guards.
+- TypeScript diagnostics in `.js` do not mean TypeScript is allowed. Fix `unknown` / missing-property errors only with runtime guards and helper functions such as `asObject`, `getObject`, `getString`, `getNumber`, `getBoolean`, `getArray`, `getFunction`.
+- Do not create legacy globals like `input`, `returnResult(...)`, `returnResultInWidget(...)`, `vfs`, `skillStorage`, `env` as a new authoring format.
+- Do not use random sibling skill folders as templates; follow `.pi/ladcraft-docs/ru/README.md`, skill-function-tutorial, and anti-patterns.
+- Publish warnings are not an instruction to auto-fix or delete files. If publish is not blocked, analyze first and explain the trade-offs before changing anything.
+- Do not delete `references/`, `tests/`, README, or other user-created local artifacts unless the user explicitly asks for it.
+- Do not mix a finished handler with unmigrated legacy patterns in the same file — migrate fully per migraciya-navykov-ladcraft.md.
+- Read runtime adapters from `state.capabilities`; avoid inventing runtime-only helper wrappers in skill source.
+- If a tool needs skill management, request capability `skills` with least privilege operations and use `state.capabilities.skills` APIs (`list/get/update/create/install`). Use `create`/`install` only for explicit create/install tasks and do not invent installation values.
+- If a tool needs the current user email, request capability `userInfo` with operation `get` and call `await state.capabilities.userInfo.get()`.
+- For skill updates prefer read-before-write flow: `skills.get(skillId)` first, then `skills.update(skillId, patch)`.
+- Determine the required side effect before coding. If task requires writing a workspace file, declare `vfs` capability with `writeFile` and call `state.capabilities.vfs.writeFile(...)` in handler.
+- `state.capabilities.vfs.writeFile('/workspace/path/file.txt', content)` creates missing parent directories. Do not add `mkdir('/workspace')` as a generic pre-write or timeout fix.
+- Do not extract VFS capability methods into unbound variables (`const writeFile = vfs.writeFile; await writeFile(...)`). Call them on the capability object: `await vfs.writeFile(...)`.
+- A `TOOL_TIMEOUT` in Ladcraft chat export is not enough to blame skill code or `resources.timeout`; inspect `toolResult`/raw events and runtime/tool policy before editing.
+- When diagnosing a Ladcraft chat export, compare the failed tool `app_id`/`skill_id` with the active skill `.from-server.json` remote skillId. If they differ, you are probably editing a different remote skill; report the mismatch before code changes.
+- Do not present `.call(vfs)`, `mkdir('/workspace')`, `resources.timeout`, or another warning as the root cause of `TOOL_TIMEOUT` unless raw toolResult/events show that exact runtime failure. Treat them as cleanup candidates only.
+- In `scripts/*.meta.md`, `resources.timeout` is in seconds with Ladcraft limit 1..3600; values above the limit block publish (often milliseconds mistaken for seconds).
+- Respect Ladcraft server ranges for tool resources: `resources.cpu` 0.1..1.0, `resources.memory` 64..256 (integer), `resources.timeout` 1..3600 (integer). Otherwise deploy may fail with `Bad Request`.
+- Do not replace requested side effects with synthetic chat output only. Requested file creation/update must happen in workspace.
+- Use `general.environment.app` for shared app-level env and `SKILL.md -> general.lib[]` for shared runtime helpers; keep tool-only overrides in `tools[].environment.app`.
+- `general.lib[]` is frontmatter, not a final `lib/` folder. Runtime prepends the first non-empty matching runtime lib block before each tool handler.
+- Helpers from `general.lib[].code` are plain top-level declarations available in `scripts/*.js`: call them directly without `require`, `import`, `module.exports`, or `export`.
+- Keep one merged `general.lib[]` block per runtime. When adding a helper, merge it into the existing block instead of creating competing blocks for the same runtime.
+- CommonJS helper migration requires a usage map first: if `scripts/<helper>.js` has `module.exports` and tools use `require('./helper')`, move shared declarations into `SKILL.md -> general.lib[]`, rewrite tools to direct helper calls, then remove the pseudo-tool file/meta if it is not a real tool. A local `lib/` folder is temporary staging only, not a deploy-ready dependency strategy.
+- For `environment.user`, each key must be an object `{ title, format }`, never a raw string/number/boolean. Allowed `format` values: `string`, `number`, `boolean`, `email`, `uri`; add `isArray: true` for install-time arrays. IMAP example: `IMAP_PORT.format = number`, `IMAP_SECURE.format = boolean`, host/user/pass are `string`.
+- Users provide `environment.user` values during skill installation; tools read them from `state.environment.user`.
+- Canonical VFS runtime shape is `state.capabilities.vfs.*`; keep runtime signatures aligned, including `readFile(path, { source })`, `writeFile`, `listDir`, `getFileMetadata`, `exists`, `isDir`, `isFile`, `mkdir`, `rm`, `rmdir`, `rmRecursive`, `cp`, and `mv`.
+- For SQL tables in skill scripts use `type: sql-storage` with `get`/`runSQL`, not legacy `type: sql` or `state.capabilities.sql`. Dialect is PostgreSQL; one statement per `runSQL` call. Open topic `sql-storage-tables` before first write.
+- Do not confuse skill `sql-storage` capability with host agent tool `sqlStorage` in chat.
+- Do not confuse skill runtime capabilities (`state.capabilities.*`) with host/cloud built-in tools such as `skillMarketplace`, `prompts`, host `skills`, host `sqlStorage`, `delegateToAgent`, or `scheduler`. For those cases open `host-agent-tools-appendix.md`.
+- Put user-facing widgets in `widgets/<name>.md`; handlers return a flat object matching `schemas.output` and every EJS `<%= %>` in the widget; never use a nested `widget: { type, name, data }` object as the tool result for Ladcraft.
+- Bind widgets: either matching names (tool/meta basename vs `widgets/<slug>.md` / frontmatter `name`) or the `/*__CURSOR_LADCRAFT_WIDGET_NAME__=<slug>*/` marker in the handler. Prefer `schemas` in `scripts/*.meta.md`, not only `parameters`/`outputs`.
+- `scripts/*.meta.md` frontmatter is for name/description/schemas/resources. `mcp_spec` in SKILL.md is the preferred place for tool environment declarations.
+- For publish/deploy, SKILL.md body (payload field `skill`) must be non-empty markdown text after frontmatter.
+- In every `scripts/<tool>.meta.md`, prefer non-empty `name` and `description` so the authored payload stays well-formed and understandable.
+- `validate_active_skill` is not the publish source of truth. It is only a thin local payload/build plus payload-contract check; Ladcraft backend decisions override local hints.
+- When changing a tool contract or behavior, check the related skill workflow, not just the edited file: SKILL.md instructions, meta schemas/descriptions, current tool runtime output, downstream tools, shared state/storage/coverage, and widgets that read those fields. Do not call work fully complete after only build validation or `validate_active_skill`; state which contracts were checked and whether runtime was not tested.
+- List external script/link/font hosts in `resources.network.hosts` when they exist; if there are none, you may omit the `hosts` array (an empty `network: {}` in the built payload is fine). ladcraft-skills-studio preview enforces CSP — prefer minimal external deps.
+- Before editing an existing skill, understand `SKILL.md`, the target `scripts/<tool>.js`, its meta, and the related widget. If you need more context, use `inspect_active_skill`.
+- After skill edits, run `validate_active_skill` before the final answer (default targets the skill you edited in this turn, not only the sidebar selection; pass `skillPath` to force a specific skill folder). Do not replace Ladcraft backend behavior with extra local validation rules.
+
+### Creating a brand-new skill (chat has no skill bound)
+- You may create a new skill folder directly under the skills root when the chat skill selector is empty.
+- The skills root is exactly the folder the user picked; do not introduce an extra `skills/` directory level for new skill folders unless the user explicitly asks for that layout.
+- Folder basename: kebab-case slug from `name` in `SKILL.md` frontmatter (lowercase ASCII letters, digits, hyphens only). Avoid `skill-<timestamp>` unless the user explicitly wants that.
+- Minimum layout: `SKILL.md` plus paired `scripts/<tool>.js` and `scripts/<tool>.meta.md` with the same `<tool>` basename and matching `name` in meta frontmatter.
+- Do not modify unrelated sibling skill folders unless the user asked.
+
+### Cloning a skill into a new folder (fork as new local skill)
+- Do not fork by reading every source file into the model and writing it back file-by-file.
+- In ladcraft-skills-studio chat agent (no shell / agent access mode), call the **`duplicate_skill_folder`** tool for a single filtered tree copy (same exclusions as the app). Then only touch `SKILL.md` if you still need a different display description.
+- With a real shell (full access / external terminal), copy the skill directory tree with **one** OS-level filesystem command (for example `rsync -a` with `--exclude` patterns, or `cp -R` plus a single cleanup pass).
+- Exclude from the copy: `.from-server.json` (server link / remote skill id), `.remote-cache/`, `.build/`, and `.skill-backups/` when they exist under the source skill.
+- Do not carry backup artifacts from `.skill-backups` into the new folder if they appear in the copy.
+- The new folder must remain a local skill without the server's skill id until the user explicitly links or syncs.
+- For a rename-only fork, after the copy edit **only** `SKILL.md` frontmatter: set `name` (and `description` if needed) to match the new folder identity. Open other files only when the user asks to change behavior, not for a plain duplicate.

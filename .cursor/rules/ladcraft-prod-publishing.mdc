@@ -1,0 +1,206 @@
+---
+description: Публикация и изменение агентов и навыков Ladcraft на prod-сервере (api.ladcraft.ru). Применять, когда пользователь просит опубликовать, обновить, импортировать, установить или привязать навык/агента Ladcraft.
+alwaysApply: false
+---
+
+# Ladcraft prod: публикация и изменение
+
+Полная процедура (с готовым helper-скриптом) — в skill `ladcraft-prod-publish`
+(`.cursor/skills/ladcraft-prod-publish/SKILL.md`). Прочитай её перед публикацией.
+
+## Окружение (обязательно)
+
+- Вся конфигурация берётся из `.env` репозитория (helper-скрипты грузят его сами из CWD):
+  `LADCRAFT_EMAIL`, `LADCRAFT_PASSWORD`, `LADCRAFT_API_URL`.
+- `LADCRAFT_API_URL`: prod `https://api.ladcraft.ru`, dev `https://api.dev.e-ai.ladcloud.ru`.
+  Не хардкодь URL в командах — он читается из `.env`; переключение prod/dev = правка `.env`.
+- Шаблон ключей — в `.env.example`. Активный env пользователя можно сверить в
+  `~/Library/Application Support/ladcraft-skills-studio/ladcraft-skills-studio-settings.json` (`ladcraft.activeEnv`).
+- Это реальный prod-аккаунт: перед записью подтверждай действие у пользователя.
+
+## Навык и агент — это РАЗНЫЕ сущности, не путать
+
+**Навык** = `application` типа `skill`.
+- Источник — папка навыка внутри кейса `cases/<case_name>/` (общий канон — `<repo>/.pi/`; легаси-кейс — `lc_contract_creator/`).
+- Публикация: `POST /v1/application/skill` (status `private`). Обновление: `PATCH /v1/application/skill/{id}` (read-before-write, переноси `tools[].id`; новые тулы без `id` создаются).
+- **Форма payload (проверено, без KB-пакера)** — ПЛОСКАЯ: `{skill:<slug-строка>, name, description, detailed_description, tags[], tools[], version, category, icon}`. `skill` — это строка-слаг (== basename папки), а не объект. Каждый tool: `{id?, name, description, runtime:"nodejs@24", schemas:{input,output}, function, capabilities:{required:[...]}, environment:{app,user}, resources:{cpu,memory,timeout,network:{hosts:[]}}}`.
+- **Если KB-пакера нет**: собери payload сам — в `function` каждого тула склей `handler` (первым) + код `general.lib` (декларации функций хойстятся, порядок не критичен); `capabilities` бери из `*.meta.md` или из `mcp_spec.default_capabilities`.
+- Перед publish из исходника: basename папки == `SKILL.md name`; для Python-tool в `*.meta.md` добавь `scriptFile: <tool>.py`; `resources` в диапазонах cpu 0.1..1, memory 64..256, timeout 1..3600.
+
+**Агент** = `application` типа `agent`, который надо МАТЕРИАЛИЗОВАТЬ в живого агента.
+- **Прямое создание живого агента (проще бандла)**: `POST /v1/agent` `{title, kind:"assistant", instruction, create_primary_workspace:true}` → сразу `{agent_id, primary_workspace_id}` (живой, без import/install).
+- Импорт бандла (альтернатива): `POST /v1/application/import` (multipart, поле `file`, `?title=`) → `{id,type:"agent"}` — это ШАБЛОН; затем `POST /v1/application/space/install/{id}?type=agent` и найди `agent_id` в `GET /v1/agent` по title.
+- Изменение живого агента: `PATCH /v1/agent/{id}` — в body **обязателен `agent_id`** (+ меняемые поля).
+- **Модель агента**: `PATCH /v1/agent/{id}` `{agent_id, default_model:"<modelId>"}`. `<modelId>` — это **id**, не имя; смотри `GET /v1/inference/model/available?required_operation=text-generation` (напр. `qwen3.5-35B` → `X2GyKB3eVGDc3sY6jZZVr`, но id зависят от аккаунта — всегда ищи заново). `agent-patch` инструкции `default_model` не трогает.
+- **Связи между агентами (делегирование)**: `POST /v1/agent/{id}/relations/batch` `{delete_relation_ids:[], create_items:[{target_agent_id, relation_type}]}`. `relation_type`: `delegates_to` (UI «Делегирует задачи»; родитель→воркер для `delegateToAgent`). Чтение: `GET /v1/agent/{id}/relations` → `{items:[]}`. (`POST .../relations` без `/batch` → 404.)
+- Привязка навыка: навык сначала **установи в space** (`POST /v1/application/space/install/{skillAppId}?type=skill`), затем `POST /v1/agent/{id}/apps` body `{agent_id, app_id, enabled}` (тоже обязателен `agent_id`). `GET /v1/agent/{id}` привязки НЕ показывает. Навык можно привязать к **нескольким** агентам (напр. оркестратору и воркеру).
+
+## Запуск живого агента (chat/runtime API)
+
+Это **data plane** (общение с работающим агентом), отдельно от публикации. Полная
+процедура и helper — в skill `ladcraft-agent-drive`
+(`.cursor/skills/ladcraft-agent-drive/SKILL.md`). Цепочка:
+`POST /v1/agent/session` `{agent_id}` → `POST /v1/agent/vfs/upload` (multipart:
+`scope=session`, `session_id`, `sync=true`, `file`) → `POST /v1/agent/session/{sid}/message`
+`{content, assistant_mode:"execution", files:{attached:[{file_id,file_name}]}}` →
+следить за состоянием через **SSE** `GET /v1/agent/sse/{session_id}` (`Accept: text/event-stream` + Bearer),
+а `GET /v1/agent/activity?agent_id=<id>&only_active=true` — грубый fallback → `GET /v1/agent/session/{sid}/history`.
+Эндпоинты сняты с веб-UI через **chrome-devtools MCP**.
+
+## Оперативный мониторинг состояния агента (SSE, без таймаутов)
+
+Веб-UI не поллит состояние по таймеру — он держит **Server-Sent Events** на сессию и реагирует на push.
+Тот же канал используй в скриптах вместо поллинга (проверено через chrome-devtools MCP):
+
+- `GET /v1/agent/sse/{session_id}` (`Accept: text/event-stream` + Bearer) — события одной сессии.
+- `GET /v1/agent/sse/ws_{workspace_id}` — все сессии агента; `GET /v1/notifications/stream?connection_version=0` — аккаунт.
+- Тело SSE: `event: <type>\n` + `data: <json>\n\n`, JSON = `{session_id, type, data, timestamp}`. Типы:
+  `task_state_changed`/`run_state_changed` (`data.state: queued→running→waiting_user_response→cancelled→
+  (re-queued)→…→completed`, плюс failed) — авторитетные переходы. В execution-режиме многораундовый ReAct
+  **сам циклит** `running→waiting_user_response→cancelled→queued→running` по раунду и авто-продолжает — это **не**
+  остановка и **не** вопрос пользователю (проверено: ран с 0 `requestUserInput` всё равно проходит
+  `waiting_user_response`); терминальны только `completed`/`failed`. `intake_start`/`intake_end`;
+  `message_start`→`content_delta`(токены)→`content_done`→
+  `assistant_message_snapshot`→`message_done` (`data.status:"completed"`); `context_usage_updated`,
+  `session_updated`, `agent_access_updated`; `ping` (keep-alive ~5с).
+- **Правило:** ход завершён **только** по `state=completed` (или `failed`), либо когда сессия ушла из активного
+  списка `activity`.   `waiting_user_response`/`cancelled` за завершение НЕ считать (повторяются каждый раунд,
+  ран авто-продолжает). Реальный вопрос пользователю = вызов `requestUserInput`/`requestApproval` (тогда
+  `activity` = `requires_user_action`). Сервер периодически закрывает стрим (`net::ERR_ABORTED`) — переоткрывай
+  на EOF. Готовый ридер — в skill `ladcraft-agent-drive`.
+
+## Ответ на закрытый вопрос агента (`requestUserInput`/`requestApproval`) — проверено
+
+Когда агент задаёт вопрос («Вопрос пользователю» / «Запрос подтверждения»), ран встаёт в
+`waiting_user_response`, а `GET /v1/agent/activity?...&only_active=true` показывает
+`activity_state:"requires_user_action"`. Структура вопроса доступна двумя путями:
+
+- **SSE-событие `user_input_required`**: `data = {action_id, type:"form", prompt, question_kind,
+  questions:[{id, question, allow_text_response, options?}], next_phase, primary_text_already_in_message,
+  response_message_visible_in_chat}`. У вопроса **с вариантами** появляется `questions[].options:[{id, label}]`
+  (кнопки в UI); `allow_text_response` говорит, принимается ли и свободный текст (обычно `true`).
+  Текст вопроса дублируется обычным assistant-сообщением
+  (`message_start`→`content_done`) и в `history` лежит как обычный `assistant`/`text` (в снапшоте
+  `tool_calls` может быть `null`).
+- **`activity` → `waiting_action`**: тот же объект (`action_id`, `questions[]`, `allow_text_response`)
+  на активном элементе — поллер, пропустивший SSE, всё равно прочитает ожидающий вопрос.
+
+**Отвечают обычным сообщением в ТУ ЖЕ сессию** — отдельного эндпоинта нет, для текстового ответа
+`action_id` не нужен: `POST /v1/agent/session/{sid}/message {content, assistant_mode:"execution"}`
+(helper: `lc_agent_drive.js say <sessionId> --msg "<ответ>"`). Runtime сам сопоставляет сообщение с
+ожидающим `action` (сессия в `waiting_user_response`) и **возобновляет ТОТ ЖЕ `task_id` с новым
+`run_id`** (проверено: `waiting_user_response → running`); ответ пишется в `history` обычным
+`user`/`text`. После ответа следи за стримом дальше: агент либо дойдёт до `completed`, либо задаст
+**следующий** вопрос (снова `requires_user_action`) — повторяй `say` до терминального состояния ран.
+Проверено и для **свободного**, и для **вопроса с вариантами** (`options:[{id,label}]`, `allow_text_response:true`):
+ответ меткой варианта обычным текстом штатно возобновляет тот же `task_id`. `requestApproval` — тот же канал
+(ответь текстом решения).
+
+## Мультиагент: VFS-слои, делегирование, sql-storage (проверено)
+
+- **VFS-roots: семантика + видимость в UI** (root в пути решает, к чему привязан файл и кто увидит):
+  `/session` — сессия/диалог, **временный слой поверх workspace**, в UI кнопка «Файлы чата»;
+  `/workspace` — рабочая область агента, **основной пользовательский файловый контур** (относительные пути
+  резолвятся сюда), в UI панель «Файлы агента» + KB-папки `methodology/precedents/regulations/templates`
+  (индекс `fileSearch`); `/user` — привязка `space_id+user_id` (без workspace/session), общий для агентов
+  **одного пользователя**, в UI **не виден**; `/space` — привязка только `space_id`, общий на **всё
+  пространство/организацию**, в UI **не виден**. Проверено через chrome-devtools MCP: UI показывает ровно два
+  места — «Файлы чата» = `/session` и «Файлы агента» = `/workspace`; у `/user` и `/space` UI-браузера нет (они
+  доступны только агенту/runtime через VFS-tools). Панель «Файлы агента» **не авто-обновляется** на изменения
+  через API — нужен reload. **Merged-чтение:** `session → workspace → user → space` (одноимённый файл в более
+  близком scope перекрывает общий слой).
+- **Политика размещения (канон, дефолты):** `/user/...` — межагентский обмен (общий долгоживущий слой агентов
+  одного пользователя, напр. черновики блоков воркера для оркестратора; запись воркера в `/user/...` читается
+  оркестратором — проверено). `/session/...` — файлы, актуальные **только для конкретного прогона**.
+  `/workspace/...` — файлы, которые **всегда должны быть видны пользователю внутри агента** (результат, который
+  пользователь хочет видеть/хранить: готовый договор, memo) → кладутся в подпапку (напр. `/workspace/contracts/{id}/`),
+  не сыпать в корень `/workspace` рядом с KB. `/space/...` — только для шаринга на всё пространство (разные
+  пользователи), не для агентов одного пользователя.
+- **Инспекция/управление VFS (проверенные эндпоинты):** список —
+  `GET /v1/agent/vfs/files?scope=session|workspace|user|space[&session_id|workspace_id|space_id=...]&page=1&size=9999&hierarchical=true|false`
+  (files принимает `scope=user`); загрузка — `POST /v1/agent/vfs/upload` (multipart `{scope,[workspace_id|session_id],path,sync:true,file}`);
+  **удаление файла И папки — один эндпоинт** `DELETE /v1/agent/vfs/folders?scope=...&[workspace_id=...]&path=<полный путь, напр. ~/workspace/_work>`
+  → `{path, deleted_count, status}`, **без тела запроса** (с `content-type: application/json` и пустым телом → 400;
+  роутов `/vfs/file(s)` на DELETE нет — 404); квота — `GET /v1/agent/vfs/quota?scope=workspace|space` (`scope=user` НЕ принимает).
+- **sql-storage — per-agent** (не шарится): `GET /v1/storage/by-agent/{agentId}` → свой `storage_id`
+  (у свежего агента может быть пусто). Навык может сам инициализировать хранилище: добавь `create` в
+  `operations` и вызови `sql.create()`, если `sql.get()` пуст. Поэтому общее состояние двух агентов
+  держи в общем VFS (`/user`), а реестр/SQL — у одного «владельца» (оркестратора).
+- **`delegateToAgent` асинхронный**: возвращает `{status:"pending", delegated_session_id}`, результат
+  воркера приходит оркестратору **следующим шагом**. Полный текст, возвращаемый через канал делегирования,
+  модель часто ужимает/теряет и он раздувает контекст — **передавай указатель на файл (path+длину), а не
+  текст**.
+- **`delegateToAgents` (пачка) работает** и даёт реальный параллелизм (проверено на qwen3.5-35B): волна
+  воркеров идёт одновременно, `join_policy:"wait_all"` возвращается, когда **все** ответили. Источник истины
+  по готовности — не строки `RESULT`, а факт файлов (свой read-only тул `check_blocks`), и **детерминированные
+  пути** (`deal.json` + `path` в делегировании), иначе воркеры дрейфуют по `processing_id`/путям.
+
+## Лимиты выполнения и делегирования (Расширенные настройки BETA)
+
+В UI агента: «Настройки агента» → **«Расширенные настройки BETA»**. Зеркалятся в `PATCH /v1/agent/{id}`
+(`config.policy` и `default_policy.agent_modules`), читаются через `GET /v1/agent/{id}`. Дефолты (проверено):
+
+- **Выполнение:** «Раунды инструментов» = 500 (шагов с тулами за ран), «Раунды без прогресса» = 10 (шагов без
+  нового результата до остановки — даёт алерт «Выполнение остановлено после N раундов без прогресса»),
+  «Таймаут запуска» = 1800с (весь ран; min 30), «Таймаут модели» = 300с (один ответ модели; min 300),
+  «Поисковые запросы» = 150, «Чтение страниц» = 500.
+- **Делегирование:** «Разрешить делегирование» (вкл), «Стратегия делегирования» = combobox **«Ждать всех»**
+  (`wait_all`) | **«Ждать до таймаута»** (`wait_until_timeout`), **«Параллельные делегирования»** =
+  **`delegation.max_parallel_runs`** (дефолт **4**, min 1) — жёсткий потолок одновременных воркеров в
+  `delegateToAgents`. В чате счётчик «Параллельные агенты: N» отражает фактический параллелизм (≤ лимита).
+  Полный дефолт `delegation` (config-reference): `{enabled:true, max_parallel_runs:4, join_policy:"wait_all",
+  join_timeout_ms:600000, resume_parent_on_completion:true}`.
+- **Патч этих полей (проверено):** read-before-write, кладёшь delegation **в оба** объекта —
+  `config.policy.delegation` **и** `default_policy.agent_modules.delegation` — и `PATCH /v1/agent/{id}`
+  `{agent_id, config, default_policy}`. Helper: `ladcraft_prod.js agent-policy <agentId> [--max-parallel N]
+  [--join-policy wait_all|wait_until_timeout] [--join-timeout-ms N] [--resume-parent true|false]`. Поля
+  «Раунды/Таймауты» меняй через UI (их API-имена не подтверждены).
+- **Тумблеры тулов/секций контекста** (все по дефолту вкл): «Параллельное делегирование», «SQL-хранилище»,
+  «Поиск по файлам», «Каталог агентов», «Запрос подтверждения», «Вопрос пользователю» и т.д.
+- **Параллелизм — практика (проверено):** поднять `max_parallel_runs` 4→8 **само по себе не ускоряет**.
+  Узкое место — латентность одного воркера (свежий контекст + навыки + `fileSearch` + черновик ≈ 5–6 мин), а
+  `wait_all` ждёт **самого медленного во всей волне**. Гигантская волна (10+ задач одним `delegateToAgents`)
+  блокирует оркестратор на ~2 внутренних подволны (≈13 мин) и не доходит до сборки в лимит времени. Рабочий
+  баланс — **волны по ~6 блоков** (целиком параллельны при лимите 8) + добор только `missing` через `check_blocks`.
+
+## Экспорт навыка/агента в файл и импорт (бандлы)
+
+- **Экспорт**: `GET /v1/application/{id}/export` → blob `application/gzip` (Bearer-токен; ответ
+  **без** `Content-Disposition` — имя файла задавай сам). Веб-кнопка «Скачать» дёргает именно
+  этот эндпоинт и сохраняет blob на клиенте; отдельного API скачивания нет.
+- **Формат бандла** `*.application.ladcraft` = **tar + gzip**, внутри два файла:
+  `manifest.json` (`{format:"application.ladcraft", format_version:"1.0.0", packaging:"tar+gzip",
+  created_at, content:{file:"application.json", sha256, size_bytes}}`) и `application.json`
+  (полное тело: `type, name, description, readme, skill, version, category, tags, cover, icon,
+  allow_copy, tools`). Распаковка: `tar -xzOf <file> application.json`.
+- **Импорт**: `POST /v1/application/import` — multipart, поле `file` (+ `?title=` или поле `title`).
+  Для агента возвращается ШАБЛОН (`type:"agent"`), который ещё надо `install` (см. выше).
+
+## Инспекция навыков (поиск по возможностям, напр. VFS)
+
+- Список (`/v1/application/list`) НЕ содержит код тулов и capabilities. Фильтр созданных мной
+  навыков в веб-UI: `...&authored_by_me=true`.
+- Детали тулов — только через `GET /v1/application/{id}?type=skill`: возвращает `tools[]` с
+  `function` (полный код), `capabilities`, `environment`, `resources`, `schemas`.
+- **Признак «навык использует VFS»** (авторитетный) — задекларированная capability:
+  `tools[].capabilities.required[]`, где `type === "vfs"` (плюс список `operations`:
+  `readFile/writeFile/listDir/mkdir/...`). Совпадение подстроки `vfs` в `function` без такой
+  capability — слабый сигнал (часто просто строка/имя), фактического доступа к VFS нет.
+
+## Несколько учёток
+
+- В `.env` есть осн. (`LADCRAFT_EMAIL`/`LADCRAFT_PASSWORD`) и тестовая
+  (`LADCRAFT_TEST_EMAIL`/`LADCRAFT_TEST_PASSWORD`). Helper/скрипты берут creds из `process.env`
+  раньше, чем из `.env`, поэтому для прогона под тестовой учёткой экспортируй
+  `LADCRAFT_EMAIL`/`LADCRAFT_PASSWORD` = тестовые значения (или вызывай login с нужной парой).
+
+## Грабли (проверено)
+
+- **Навык привязан, но «не подключён»** = навык не установлен в space. Только bind недостаточно — нужен install навыка (`type=skill`). В helper: `agent-bind <agentId> <skillAppId> --install` или `skill-install <skillAppId>`.
+- id из import ≠ живой `agent_id`; embedded `agent_id` из бандла тоже не живой — нужен `install` (`type=agent`).
+- `PATCH /v1/agent/{id}` и `POST .../apps` без `agent_id` в body → 400 VALIDATION_ERROR.
+- Дефолтный URL тулчейна — dev; держи `LADCRAFT_API_URL` в `.env` (helper читает его сам; KB-пакеру переменную нужно экспортировать).
+- `PATCH /v1/application/skill/{id}` **сам назначает версию** (отправил 1.1.1 — вернулось 2.0.0); версию бери из ответа. Этот же апдейт целиком заменяет инлайненный код тулов — так и катятся изменения Python-кода. Привязанный агент подхватывает новую версию на следующем запуске (пере-bind не нужен).
+- Список навыков: `GET /v1/application/list?type[]=skill&return_installed=true` → `data.applications` (не `data.items`).
+- `activity` показывает только активные раны; завершённый ран просто исчезает из `items`. Снимок `history` для незавершённого сообщения может отставать — не делай вывод «застрял» по одному снимку, сверяйся с `activity`.
+- В браузере те же эндпоинты требуют `credentials: 'include'` (cookie-auth); из скрипта — Bearer-токен из `/v1/auth/login`.

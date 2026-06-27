@@ -1,0 +1,45 @@
+---
+description: Контракт передачи данных из плагина ladcraft-r7 (R7) в агент Ladcraft — VFS session, mentioned.files, r7-snapshot. Применять при настройке агентов/навыков для R7, doc-compare и смежных сценариев.
+alwaysApply: false
+---
+
+# ladcraft-r7 → агент: передача данных
+
+Полный контракт: **`cases/doc_compare/docs/r7-plugin-data-contract.md`** — читай перед настройкой нового R7-агента.
+
+## Кратко (инварианты)
+
+### Куда кладёт плагин документ B
+
+- `POST /v1/agent/vfs/upload`, `scope=session`, `path=/r7/r7-{sanitizedDocKey}.json`, **`sync:true`**
+- Bash-path: **`/session/r7/r7-{sanitizedDocKey}.json`**
+- `docKey` = `{editor}:{url|title}` → sanitize (`:` → `_`, max 80) → `r7-word_7b6db4c8….json`
+
+### Что приходит в message
+
+- `content` — только задание пользователя, **не** текст документа
+- `mentioned.files[0].file_name` — bash-path (на каждом сообщении, включая 1-е)
+- `file_id` — для API и smoke verify в плагине
+- Title чата: `R7: word:{docKey}::agent:{agentId}` → извлекай `doc_key`
+
+### Формат snapshot
+
+- `r7-snapshot/v1`, текст для сравнения: **`body.text`**
+- Плагин verify: `download(file_id)` → schema + `body.text` не пуст
+
+### Как читать (агент)
+
+| Данные | Как |
+|--------|-----|
+| Найти path | skill **`resolve_r7_document`** / **`startup_compare`** (retry 3×2s) |
+| Прочитать B | skill **`read_r7_snapshot_text`** — **не** bash на `/session/r7/` |
+| Шаблон A | `/workspace/Templates/` — bash `head` или skill VFS |
+| Вставка в Word | **не** писать в JSON snapshot → `r7-export` |
+
+### Гонка upload / 1-е сообщение
+
+Upload может завершиться **после** старта агента → обязателен **retry** в навыке; в плагине — upload **до** message.
+
+### Референс-код
+
+`cases/compare-r7/skills/r7-compare-toolkit/` (`read_r7_snapshot_text`, `resolve_r7_document`, `vfsSnapshotReady`).

@@ -1,0 +1,196 @@
+{
+  "snapshotVersion": 1,
+  "source": "/Users/diobrando/MyProjects/codebase/backend/services/runtime/infra/capabilities",
+  "sourceRevision": "985ae1f1e",
+  "capturedAt": "2026-06-03",
+  "purpose": "Stable contract slice for ladcraft-skills-studio .pi docs and local validation drift checks.",
+  "capabilities": [
+    {
+      "type": "key-value-storage",
+      "operations": [
+        {
+          "name": "Get",
+          "runtimeName": "get",
+          "runtimeArgs": ["key"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "Set",
+          "runtimeName": "set",
+          "runtimeArgs": ["key", "value"],
+          "requiresHttpSocket": false
+        }
+      ]
+    },
+    {
+      "type": "vfs",
+      "operations": [
+        {
+          "name": "readFile",
+          "runtimeName": "readFile",
+          "runtimeArgs": ["path", "options"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "getFileMetadata",
+          "runtimeName": "getFileMetadata",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "writeFile",
+          "runtimeName": "writeFile",
+          "runtimeArgs": ["path", "content"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "listDir",
+          "runtimeName": "listDir",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "exists",
+          "runtimeName": "exists",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "isDir",
+          "runtimeName": "isDir",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "isFile",
+          "runtimeName": "isFile",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "mkdir",
+          "runtimeName": "mkdir",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "rm",
+          "runtimeName": "rm",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "rmdir",
+          "runtimeName": "rmdir",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "rmRecursive",
+          "runtimeName": "rmRecursive",
+          "runtimeArgs": ["path"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "cp",
+          "runtimeName": "cp",
+          "runtimeArgs": ["src", "dest"],
+          "requiresHttpSocket": true
+        },
+        {
+          "name": "mv",
+          "runtimeName": "mv",
+          "runtimeArgs": ["src", "dest"],
+          "requiresHttpSocket": true
+        }
+      ]
+    },
+    {
+      "type": "sql-storage",
+      "operations": [
+        {
+          "name": "create",
+          "runtimeName": "create",
+          "runtimeArgs": [],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "get",
+          "runtimeName": "get",
+          "runtimeArgs": [],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "describe",
+          "runtimeName": "describe",
+          "runtimeArgs": ["storageId"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "getTableData",
+          "runtimeName": "getTableData",
+          "runtimeArgs": ["storageId", "table", "limit", "offset"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "runSQL",
+          "runtimeName": "runSQL",
+          "runtimeArgs": ["storageId", "sql"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "delete",
+          "runtimeName": "delete",
+          "runtimeArgs": ["storageId"],
+          "requiresHttpSocket": false
+        }
+      ]
+    },
+    {
+      "type": "skills",
+      "operations": [
+        {
+          "name": "list",
+          "runtimeName": "list",
+          "runtimeArgs": ["options"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "get",
+          "runtimeName": "get",
+          "runtimeArgs": ["skillId"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "update",
+          "runtimeName": "update",
+          "runtimeArgs": ["skillId", "skill"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "create",
+          "runtimeName": "create",
+          "runtimeArgs": ["skill"],
+          "requiresHttpSocket": false
+        },
+        {
+          "name": "install",
+          "runtimeName": "install",
+          "runtimeArgs": ["skillId", "installationForm"],
+          "requiresHttpSocket": false
+        }
+      ]
+    },
+    {
+      "type": "userInfo",
+      "operations": [
+        {
+          "name": "get",
+          "runtimeName": "get",
+          "runtimeArgs": [],
+          "requiresHttpSocket": false
+        }
+      ]
+    }
+  ]
+}

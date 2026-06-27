@@ -1,0 +1,48 @@
+{
+  "name": "calculator_skill",
+  "description": "Простой навык с детерминированным калькулятором: арифметика над двумя числами (+, -, *, /).",
+  "skill": "# Calculator skill\n\nНавык предоставляет инструмент `calculate` для точных арифметических операций над двумя числами: add, subtract, multiply, divide.",
+  "version": "1.0.0",
+  "tags": ["demo", "calculator", "arithmetic"],
+  "category": "productivity",
+  "icon": "calculator",
+  "tools": [
+    {
+      "name": "calculate",
+      "description": "Выполняет арифметическую операцию над двумя числами (add, subtract, multiply, divide).",
+      "runtime": "nodejs@24",
+      "capabilities": { "required": [] },
+      "environment": { "app": {}, "user": {} },
+      "resources": { "cpu": 0.1, "memory": 64, "timeout": 10, "network": { "hosts": [] } },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["a", "b", "operation"],
+          "properties": {
+            "a": { "type": "number" },
+            "b": { "type": "number" },
+            "operation": {
+              "type": "string",
+              "enum": ["add", "subtract", "multiply", "divide"]
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok"],
+          "properties": {
+            "ok": { "type": "boolean" },
+            "a": { "type": "number" },
+            "b": { "type": "number" },
+            "operation": { "type": "string" },
+            "result": { "type": "number" },
+            "error": { "type": "string" }
+          }
+        }
+      },
+      "function": "function asObject(value) {\n  return value && typeof value === 'object' ? value : null;\n}\nfunction getString(source, key) {\n  const object = asObject(source);\n  if (!object) return '';\n  const value = object[key];\n  return typeof value === 'string' ? value : '';\n}\nfunction getNumber(source, key) {\n  const object = asObject(source);\n  if (!object) return NaN;\n  const value = object[key];\n  return typeof value === 'number' && Number.isFinite(value) ? value : NaN;\n}\n\nasync function handler(state, params) {\n  const a = getNumber(params, 'a');\n  const b = getNumber(params, 'b');\n  const operation = getString(params, 'operation').trim();\n\n  if (!Number.isFinite(a)) {\n    return { ok: false, error: 'a должно быть конечным числом' };\n  }\n  if (!Number.isFinite(b)) {\n    return { ok: false, error: 'b должно быть конечным числом' };\n  }\n\n  const ops = {\n    add: function (x, y) { return x + y; },\n    subtract: function (x, y) { return x - y; },\n    multiply: function (x, y) { return x * y; },\n    divide: function (x, y) {\n      if (y === 0) return null;\n      return x / y;\n    }\n  };\n\n  const fn = ops[operation];\n  if (!fn) {\n    return { ok: false, error: 'operation должна быть add | subtract | multiply | divide' };\n  }\n\n  const result = fn(a, b);\n  if (result === null) {\n    return { ok: false, error: 'деление на ноль' };\n  }\n\n  return { ok: true, a: a, b: b, operation: operation, result: result };\n}"
+    }
+  ]
+}

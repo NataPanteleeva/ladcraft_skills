@@ -1,0 +1,880 @@
+import { buildDocKey, getConfig, saveConfig, type EditorType } from "./config";
+import {
+  ensureDocumentContext,
+  isContextBoundToDocument,
+  isDocumentDirty,
+  type DocumentContextState,
+} from "./transfer/context-sync";
+import { prepareOutbound } from "./transfer";
+import {
+  clearDocumentContext,
+  clearSessionForDoc,
+} from "./context/registry";
+import {
+  EaiClient,
+  getStoredUserId,
+  saveUser,
+} from "./eai/client";
+import { loadCatalog, type CatalogResult } from "./eai/catalog";
+import {
+  createSession,
+  deleteSession,
+  getHistoryMessages,
+  isSessionNotFoundError,
+  sendMessage,
+  waitForAssistantTurn,
+} from "./eai/session";
+import { extractWidgetPayload } from "./eai/widget";
+import { isVfsNotFoundError, isVfsFileReady } from "./eai/vfs";
+import { getSelectedText } from "./editor/reader";
+import { renderAuthView } from "./ui/auth";
+import { renderShellView } from "./ui/shell";
+import { historyToChatMessages } from "./ui/chat-history";
+import { createActionHandlers, renderChatView, resetChatScroll, unmountChatView, type ChatMessage } from "./ui/chat";
+
+type AppScreen = "auth" | "shell" | "chat";
+
+class LadcraftR7App {
+  private client = new EaiClient();
+  private root: HTMLElement;
+  private screen: AppScreen = "auth";
+  private editorType: EditorType = "word";
+  private sessionId: string | null = null;
+  private contextFileId: string | null = null;
+  private contextFileName: string | null = null;
+  private contextFilePath: string | null = null;
+  private contextState: DocumentContextState = "no_vfs";
+  private contextError: string | null = null;
+  private firstMessageInSession = true;
+  private messages: ChatMessage[] = [];
+  private isSending = false;
+  private chatReady = false;
+  private catalog: CatalogResult | null = null;
+  private shellLoading = false;
+  private connectionOk = false;
+  private connectionStatus = "";
+  private selectedAgentId = "";
+  private agentLabel = "";
+  private chatStatus = "Готово";
+  private needsEditorRemount = false;
+  private lastEditorAttachFileId: string | null = null;
+  private boundDocKey: string | null = null;
+  private historySyncTimer: ReturnType<typeof setInterval> | null = null;
+  private widgetPollTimer: ReturnType<typeof setInterval> | null = null;
+  private lastChatPaintKey = "";
+
+  constructor(root: HTMLElement) {
+    this.root = root;
+  }
+
+  /** Initialize plugin after Asc.plugin.init. */
+  async start(): Promise<void> {
+    this.editorType = this.detectEditorType();
+    const cfg = getConfig();
+    this.selectedAgentId = cfg.selectedAgentId;
+
+    if (this.client.isAuthenticated()) {
+      await this.showShell();
+    } else {
+      this.showAuth();
+    }
+    this.setupContextMenu();
+  }
+
+  private detectEditorType(): EditorType {
+    const t = window.Asc?.plugin?.info?.editorType;
+    return t === "cell" ? "cell" : "word";
+  }
+
+  private showAuth(): void {
+    this.screen = "auth";
+    const cfg = getConfig();
+    renderAuthView(
+      this.root,
+      this.client,
+      {
+        onLogin: async (email, password) => {
+          const user = await this.client.login(email, password);
+          saveUser({ ...user, email });
+          await this.showShell();
+        },
+        onRegisterStart: async (email, invite) => {
+          await this.client.registerStart(email, invite);
+        },
+        onRegisterConfirm: async (token) => this.client.registerConfirm(token),
+        onRegisterComplete: async (completionToken, password, firstName) => {
+          const user = await this.client.registerComplete(
+            completionToken,
+            password,
+            firstName,
+          );
+          saveUser(user);
+          await this.showShell();
+        },
+        onSaveBaseUrl: (baseUrl) => {
+          this.client.setBaseUrl(baseUrl);
+          saveConfig({ baseUrl });
+        },
+        onPing: () => this.client.pingConnection(),
+      },
+      { baseUrl: cfg.baseUrl },
+    );
+  }
+
+  private async showShell(): Promise<void> {
+    this.screen = "shell";
+    this.shellLoading = true;
+    this.renderShell();
+
+    const ping = await this.client.pingConnection();
+    this.connectionOk = ping.ok;
+    this.connectionStatus = ping.message;
+
+    try {
+      this.catalog = await loadCatalog(this.client);
+    } catch (err) {
+      this.catalog = {
+        agents: [],
+        errors: [err instanceof Error ? err.message : String(err)],
+      };
+    }
+
+    this.shellLoading = false;
+    this.renderShell();
+  }
+
+  private renderShell(): void {
+    const cfg = getConfig();
+    renderShellView(
+      this.root,
+      {
+        baseUrl: cfg.baseUrl,
+        connectionStatus: this.connectionStatus || "Нажмите «Обновить»",
+        connectionOk: this.connectionOk,
+        catalog: this.catalog,
+        selectedAgentId: this.selectedAgentId,
+        isLoading: this.shellLoading,
+      },
+      {
+        onRefresh: () => this.showShell(),
+        onSelectAgent: (agentId) => {
+          this.selectedAgentId = agentId;
+          saveConfig({ selectedAgentId: agentId });
+          const agent = this.catalog?.agents.find((a) => a.id === agentId);
+          this.agentLabel = agent?.name ?? agentId;
+          this.renderShell();
+        },
+        onOpenChat: () => void this.openChat(),
+        onLogout: () => this.logout(),
+      },
+    );
+  }
+
+  private currentDocKey(): string {
+    return buildDocKey({
+      ...(window.Asc?.plugin?.info ?? {}),
+      editorType: this.editorType,
+    });
+  }
+
+  /** Sync document to session VFS (block 1). */
+  private async syncDocumentContextForChat(options?: {
+    forceReupload?: boolean;
+  }): Promise<void> {
+    if (!this.sessionId) {
+      throw new Error("Нет активной сессии агента");
+    }
+    const docKey = this.currentDocKey();
+    const docSwitched =
+      this.boundDocKey != null && this.boundDocKey !== docKey;
+    const ctx = await ensureDocumentContext(this.client, this.editorType, {
+      sessionId: this.sessionId,
+      forceReupload: options?.forceReupload || docSwitched,
+      docKey,
+    });
+    this.applyContext(ctx, docKey);
+  }
+
+  private async openChat(): Promise<void> {
+    const agentId = this.selectedAgentId || getConfig().selectedAgentId;
+    if (!agentId) return;
+
+    resetChatScroll();
+    this.screen = "chat";
+    this.lastChatPaintKey = "";
+    this.needsEditorRemount = true;
+    this.selectedAgentId = agentId;
+    saveConfig({ selectedAgentId: agentId });
+
+    const agent = this.catalog?.agents.find((a) => a.id === agentId);
+    this.agentLabel = agent?.name ?? agentId;
+
+    let status = "Готовим документ…";
+    this.chatReady = false;
+    this.renderChatShell(status);
+
+    try {
+        await this.ensureSession(agentId);
+
+        if (!this.sessionId) {
+        throw new Error("Не удалось создать сессию агента");
+      }
+
+      try {
+        await this.syncDocumentContextForChat({ forceReupload: true });
+        status = "Документ в VFS";
+      } catch (vfsErr) {
+        this.clearContext();
+        const vfsMsg = vfsErr instanceof Error ? vfsErr.message : String(vfsErr);
+        this.contextState = "error";
+        this.contextError = vfsMsg;
+        status = `Чат без контекста документа (VFS: ${vfsMsg})`;
+        this.chatReady = false;
+        void this.refreshContextState();
+        this.renderChatShell(status);
+        return;
+      }
+
+      await this.syncChatFromServer(agentId);
+      this.chatReady = true;
+      status = "Готово";
+      void this.refreshContextState();
+      this.renderChatShell(status);
+      this.startHistorySyncPoll(2500);
+    } catch (err) {
+      this.chatReady = false;
+      const msg = err instanceof Error ? err.message : String(err);
+      this.showOpenChatError(msg, agentId);
+    }
+  }
+
+  private showOpenChatError(message: string, agentId: string): void {
+    this.root.innerHTML = `<div class="panel"><p class="error">${escapeHtml(message)}</p>
+      <div class="toolbar">
+        <button class="primary" id="newChatBtn">Создать новый чат</button>
+        <button class="secondary" id="backToShell">Назад</button>
+      </div></div>`;
+    document.getElementById("newChatBtn")?.addEventListener("click", () => {
+      void this.closeActiveSession().then(() => this.openChat());
+    });
+    document.getElementById("backToShell")?.addEventListener("click", () => {
+      void this.showShell();
+    });
+  }
+
+  private buildSessionKey(agentId: string): string {
+    const docKey = buildDocKey({
+      ...(window.Asc?.plugin?.info ?? {}),
+      editorType: this.editorType,
+    });
+    return `${docKey}::agent:${agentId}`;
+  }
+
+  private async ensureSession(agentId: string): Promise<void> {
+    await this.createFreshSession(agentId);
+  }
+
+  /** End Ladcraft session on server and drop in-memory chat state. */
+  private async closeActiveSession(agentId?: string): Promise<void> {
+    const sessionId = this.sessionId;
+    const resolvedAgentId =
+      agentId ?? (this.selectedAgentId || getConfig().selectedAgentId);
+
+    if (sessionId) {
+      try {
+        await deleteSession(this.client, sessionId);
+      } catch {
+        /* session may already be deleted */
+      }
+    }
+
+    if (resolvedAgentId) {
+      clearSessionForDoc(getStoredUserId(), this.buildSessionKey(resolvedAgentId));
+    }
+
+    this.sessionId = null;
+    this.messages = [];
+    this.chatReady = false;
+    this.firstMessageInSession = true;
+    this.lastEditorAttachFileId = null;
+    this.boundDocKey = null;
+    this.needsEditorRemount = true;
+    this.chatStatus = "Готово";
+  }
+
+  /** Plugin panel closed — end active chat session. */
+  async shutdown(): Promise<void> {
+    this.stopChatPoll();
+    this.stopWidgetPoll();
+    this.isSending = false;
+    await this.closeActiveSession();
+  }
+
+  /** Create a new Ladcraft session for doc+agent (never reuse stored ids). */
+  private async createFreshSession(agentId: string): Promise<void> {
+    const sessionKey = this.buildSessionKey(agentId);
+    clearSessionForDoc(getStoredUserId(), sessionKey);
+
+    const session = await createSession(
+      this.client,
+      agentId,
+      `R7: ${sessionKey.slice(0, 40)}`,
+    );
+    this.sessionId = session.session_id;
+    this.messages = [];
+    this.firstMessageInSession = true;
+    this.lastEditorAttachFileId = null;
+    this.boundDocKey = null;
+    this.needsEditorRemount = true;
+  }
+
+  /** Reload message list from Ladcraft session history. */
+  private async syncChatFromServer(agentId?: string): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      await this.loadHistoryFromServer();
+    } catch (err) {
+      const resolvedAgentId =
+        agentId ?? (this.selectedAgentId || getConfig().selectedAgentId);
+      if (!resolvedAgentId || !isSessionNotFoundError(err)) throw err;
+      await this.createFreshSession(resolvedAgentId);
+      await this.loadHistoryFromServer();
+    }
+  }
+
+  private async loadHistoryFromServer(): Promise<void> {
+    if (!this.sessionId) return;
+    const history = await getHistoryMessages(this.client, this.sessionId);
+    this.messages = historyToChatMessages(history, { editorType: this.editorType });
+    this.firstMessageInSession = !this.messages.some((m) => m.role === "user");
+  }
+
+  private renderChatShell(status: string, force = false): void {
+    this.chatStatus = status;
+    const contextStateBefore = this.contextState;
+    const contextErrorBefore = this.contextError;
+
+    const paint = (forcePaint = false): void => {
+      const paintKey = [
+        status,
+        this.historyFingerprint(),
+        this.isSending,
+        this.chatReady,
+        this.contextState,
+        this.contextError ?? "",
+        this.agentLabel,
+      ].join("|");
+
+      if (!forcePaint && paintKey === this.lastChatPaintKey) return;
+      this.lastChatPaintKey = paintKey;
+
+      renderChatView(
+        this.root,
+        {
+          messages: this.messages,
+          status,
+          isSending: this.isSending,
+          contextState: this.contextState,
+          contextError: this.contextError ?? undefined,
+          agentLabel: this.agentLabel,
+          chatReady: this.chatReady,
+        },
+        {
+          onBack: () => {
+            void this.exitChatToShell(true);
+          },
+          onLogout: () => this.logout(),
+          onRefreshContext: () => this.handleRefreshContext(),
+          onSend: (text) => this.handleSend(text),
+          onWidgetSubmit: (text) => this.handleSend(text),
+        },
+        {
+          actionHandlers: createActionHandlers({
+            client: this.client,
+            editorType: this.editorType,
+            onStatus: (msg) => {
+              this.chatStatus = msg;
+              if (this.screen === "chat") {
+                this.renderChatShell(msg);
+              }
+            },
+          }),
+        },
+      );
+    };
+
+    paint(force);
+    void this.refreshContextState().then(() => {
+      if (this.screen !== "chat") return;
+      if (
+        this.contextState !== contextStateBefore ||
+        this.contextError !== contextErrorBefore
+      ) {
+        paint();
+      }
+    });
+    this.syncWidgetPoll();
+  }
+
+  /** Poll history while a clarification widget is pending. */
+  private syncWidgetPoll(): void {
+    this.stopWidgetPoll();
+    if (this.screen !== "chat" || !this.sessionId) return;
+
+    const last = this.messages[this.messages.length - 1];
+    const needsPoll =
+      last?.role === "assistant" &&
+      (last.waitingForInput || (last.widget && last.widget.interactive));
+    if (!needsPoll) return;
+
+    const agentId = this.selectedAgentId || getConfig().selectedAgentId;
+    this.widgetPollTimer = setInterval(() => {
+      if (this.screen !== "chat" || !this.sessionId) {
+        this.stopWidgetPoll();
+        return;
+      }
+      const before = this.historyFingerprint();
+      void this.syncChatFromServer(agentId || undefined).then(() => {
+        if (this.screen !== "chat") return;
+        if (this.historyFingerprint() !== before) {
+          this.renderChatShell(this.chatStatus);
+        }
+        const latest = this.messages[this.messages.length - 1];
+        const stillPending =
+          latest?.role === "assistant" &&
+          (latest.waitingForInput || (latest.widget && latest.widget.interactive));
+        if (!stillPending) this.stopWidgetPoll();
+      });
+    }, 2000);
+  }
+
+  private stopWidgetPoll(): void {
+    if (this.widgetPollTimer != null) {
+      clearInterval(this.widgetPollTimer);
+      this.widgetPollTimer = null;
+    }
+  }
+
+  /** Leave chat: delete Ladcraft session so the next open starts clean. */
+  private async exitChatToShell(resetSession: boolean): Promise<void> {
+    this.stopHistorySyncPoll();
+    this.stopWidgetPoll();
+    this.isSending = false;
+    this.lastChatPaintKey = "";
+    unmountChatView(this.root);
+
+    if (resetSession) {
+      await this.closeActiveSession();
+    }
+
+    await this.showShell();
+  }
+
+  /** Poll Ladcraft history while chat is open (survives send timeout). */
+  private startHistorySyncPoll(intervalMs = 2500): void {
+    this.stopHistorySyncPoll();
+    this.historySyncTimer = setInterval(() => {
+      void this.tickHistorySync();
+    }, intervalMs);
+  }
+
+  private stopHistorySyncPoll(): void {
+    if (this.historySyncTimer != null) {
+      clearInterval(this.historySyncTimer);
+      this.historySyncTimer = null;
+    }
+  }
+
+  private historyFingerprint(): string {
+    return this.messages
+      .map((m) => `${m.id}:${m.text.length}:${m.widget ? 1 : 0}:${m.widgetChoices?.length ?? 0}`)
+      .join("|");
+  }
+
+  private hasAssistantReplyForLastUser(): boolean {
+    let lastUser = -1;
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].role === "user") lastUser = i;
+    }
+    if (lastUser < 0) return false;
+    for (let i = lastUser + 1; i < this.messages.length; i++) {
+      const m = this.messages[i];
+      if (m.role !== "assistant") continue;
+      if (m.widget || m.widgetChoices?.length) return true;
+      const body = m.text.trim();
+      if (body && body !== "Агент выполняет запрос…") return true;
+    }
+    return false;
+  }
+
+  private async tickHistorySync(): Promise<void> {
+    if (this.screen !== "chat" || !this.sessionId) {
+      this.stopHistorySyncPoll();
+      return;
+    }
+
+    const agentId = this.selectedAgentId || getConfig().selectedAgentId;
+    if (!agentId) return;
+
+    const before = this.historyFingerprint();
+    const awaitingLateReply = this.chatStatus === "Ответ задерживается — загружаем из чата…";
+    const statusBefore = this.chatStatus;
+
+    try {
+      await this.syncChatFromServer(agentId);
+    } catch {
+      return;
+    }
+
+    const changed = this.historyFingerprint() !== before;
+    if (this.hasAssistantReplyForLastUser() && awaitingLateReply) {
+      this.chatStatus = "Готово";
+    }
+
+    if (changed || this.chatStatus !== statusBefore) {
+      this.renderChatShell(this.chatStatus);
+      this.syncWidgetPoll();
+    }
+  }
+
+  private startChatPoll(): void {
+    this.startHistorySyncPoll(1200);
+  }
+
+  private stopChatPoll(): void {
+    if (!this.isSending && this.screen === "chat") {
+      this.startHistorySyncPoll(2500);
+      return;
+    }
+    this.stopHistorySyncPoll();
+  }
+
+  private async handleRefreshContext(): Promise<void> {
+    if (!this.sessionId) return;
+    const hadError = this.contextState === "error" || Boolean(this.contextError);
+    this.contextState = "syncing";
+    this.renderChatShell("Синхронизация документа...");
+    try {
+      await this.syncDocumentContextForChat({ forceReupload: hadError });
+      this.contextState = "synced";
+      this.contextError = null;
+      this.chatReady = true;
+      this.renderChatShell("Документ обновлён в VFS");
+    } catch (err) {
+      this.contextState = "error";
+      this.contextError = err instanceof Error ? err.message : String(err);
+      this.chatReady = false;
+      this.renderChatShell(`Ошибка синхронизации: ${this.contextError}`);
+    }
+  }
+
+  private applyContext(
+    ctx: {
+      fileId: string;
+      fileName: string;
+      filePath?: string;
+      contentHash: string;
+    },
+    docKey: string,
+  ): void {
+    this.contextFileId = ctx.fileId;
+    this.contextFileName = ctx.fileName;
+    this.contextFilePath = ctx.filePath ?? null;
+    this.boundDocKey = docKey;
+    this.contextState = "synced";
+    this.contextError = null;
+  }
+
+  private clearContext(): void {
+    this.contextFileId = null;
+    this.contextFileName = null;
+    this.contextFilePath = null;
+    this.boundDocKey = null;
+    this.contextState = "no_vfs";
+  }
+
+  private async refreshContextState(): Promise<void> {
+    const docKey = this.currentDocKey();
+    if (this.boundDocKey && this.boundDocKey !== docKey) {
+      this.contextState = "dirty";
+      this.contextError = null;
+      return;
+    }
+    if (!this.contextFileId) {
+      this.contextState = "no_vfs";
+      return;
+    }
+    if (this.contextState === "syncing") return;
+    try {
+      if (
+        !isContextBoundToDocument(
+          this.editorType,
+          this.boundDocKey,
+          this.contextFileId,
+        )
+      ) {
+        this.contextState = "dirty";
+        return;
+      }
+      const ready = await isVfsFileReady(this.client, this.contextFileId);
+      if (!ready) {
+        this.contextState = "error";
+        this.contextError = "Файл VFS недоступен — нажмите «Синхр. документ»";
+        return;
+      }
+      const dirty = await isDocumentDirty(this.editorType, {
+        docKey: this.boundDocKey,
+        fileId: this.contextFileId,
+      });
+      this.contextState = dirty ? "dirty" : "synced";
+      if (!dirty) this.contextError = null;
+    } catch (err) {
+      this.contextState = "error";
+      this.contextError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  private async handleSend(text: string): Promise<void> {
+    if (!this.sessionId || this.isSending || !this.chatReady) return;
+
+    const agentId = this.selectedAgentId || getConfig().selectedAgentId;
+    if (!agentId) return;
+
+    this.isSending = true;
+    this.chatStatus = "Ожидание ответа...";
+    const userMsg: ChatMessage = {
+      id: `local-${Date.now()}`,
+      role: "user",
+      text,
+    };
+    this.messages.push(userMsg);
+    this.renderChatShell(this.chatStatus);
+    this.startChatPoll();
+
+    try {
+      let beforeCount = 0;
+      try {
+        beforeCount = (await getHistoryMessages(this.client, this.sessionId)).length;
+      } catch (err) {
+        if (!isSessionNotFoundError(err)) throw err;
+        await this.createFreshSession(agentId);
+        this.chatStatus = "Создана новая сессия";
+        beforeCount = 0;
+      }
+
+      try {
+        await this.syncDocumentContextForChat();
+      } catch (vfsErr) {
+        console.error("VFS sync before send failed:", vfsErr);
+        this.clearContext();
+        this.contextState = "error";
+        this.contextError = vfsErr instanceof Error ? vfsErr.message : String(vfsErr);
+        throw new Error(
+          `Документ не в VFS: ${this.contextError}. Нажмите «Синхр. документ».`,
+        );
+      }
+
+      await this.sendUserMessage(text, agentId);
+      await this.syncChatFromServer(agentId);
+
+      if (this.firstMessageInSession) {
+        this.firstMessageInSession = false;
+      }
+
+      const turn = await waitForAssistantTurn(
+        this.client,
+        this.sessionId,
+        beforeCount,
+        300_000,
+        (progress) => {
+          if (this.chatStatus === progress) return;
+          this.chatStatus = progress;
+          this.renderChatShell(this.chatStatus);
+        },
+        async () => {
+          const before = this.historyFingerprint();
+          await this.syncChatFromServer(agentId);
+          if (this.historyFingerprint() !== before) {
+            this.renderChatShell(this.chatStatus);
+          }
+        },
+      );
+
+      if (!turn) {
+        await this.syncChatFromServer(agentId);
+        this.chatStatus = "Ответ задерживается — загружаем из чата…";
+        this.renderChatShell(this.chatStatus);
+        return;
+      }
+
+      const widgetPayload =
+        extractWidgetPayload(turn.widget ?? turn.reply) ??
+        (turn.widget ? extractWidgetPayload(turn.widget) : null);
+      const waitingForUser = turn.waitingForUser || Boolean(widgetPayload);
+
+      if (waitingForUser) {
+        await this.syncChatFromServer(agentId);
+        if (widgetPayload) {
+          const assistantMsg = this.messages.find((m) => m.id === turn.reply.id);
+          if (assistantMsg && !assistantMsg.widget) {
+            assistantMsg.widget = { ...widgetPayload, interactive: true };
+          }
+        }
+        this.chatStatus = widgetPayload
+          ? "Выберите вариант в форме"
+          : "Ожидание формы или ответьте текстом";
+        return;
+      }
+
+      await this.syncChatFromServer(agentId);
+      this.chatStatus = "Готово";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.chatStatus = msg;
+      if (isVfsNotFoundError(err)) {
+        this.contextState = "error";
+        this.contextError = msg;
+      }
+      try {
+        await this.syncChatFromServer(agentId);
+      } catch {
+        /* keep local messages if history fetch fails */
+      }
+    } finally {
+      this.isSending = false;
+      this.stopChatPoll();
+      this.renderChatShell(this.chatStatus);
+    }
+  }
+
+  private async sendUserMessage(userText: string, agentId: string): Promise<void> {
+    if (!this.sessionId) return;
+
+    const docKey = this.currentDocKey();
+    const attachState = {
+      firstMessageInSession: this.firstMessageInSession,
+      needsEditorRemount: this.needsEditorRemount,
+      lastEditorAttachFileId: this.lastEditorAttachFileId,
+    };
+
+    const send = async (): Promise<void> => {
+      const { outbound, context } = await prepareOutbound(
+        this.client,
+        this.editorType,
+        userText,
+        attachState,
+        { docKey, sessionId: this.sessionId! },
+      );
+      this.applyContext(context, docKey);
+
+      await sendMessage(this.client, this.sessionId!, {
+        content: outbound.content,
+        fileRefs: outbound.fileRefs,
+        attachEditorFile: outbound.attachEditor,
+      });
+
+      if (outbound.attachEditor) {
+        this.needsEditorRemount = false;
+        this.lastEditorAttachFileId = outbound.primaryFileId;
+      }
+    };
+
+    try {
+      await send();
+    } catch (err) {
+      if (isSessionNotFoundError(err)) {
+        await this.createFreshSession(agentId);
+        await send();
+        return;
+      }
+      if (!isVfsNotFoundError(err)) throw err;
+      clearDocumentContext(getStoredUserId(), docKey);
+      await send();
+    }
+  }
+
+  private async runQuickAction(kind: "rewrite" | "comment"): Promise<void> {
+    if (!this.sessionId) return;
+
+    const selected = await getSelectedText();
+    let content = "";
+    if (kind === "rewrite") {
+      if (!selected) return;
+      content = `Перепиши выделенный текст:\n\n${selected}`;
+    } else {
+      content = selected
+        ? `Добавь комментарий к выделенному фрагменту:\n\n${selected}`
+        : "Добавь комментарий к текущему месту в документе по контексту.";
+    }
+
+    await this.handleSend(content);
+  }
+
+  private logout(): void {
+    void this.shutdown().then(() => {
+      this.client.logout();
+      this.clearContext();
+      this.contextError = null;
+      this.catalog = null;
+      this.showAuth();
+    });
+  }
+
+  private setupContextMenu(): void {
+    window.Asc.plugin.event_onContextMenuShow = () => {
+      if (this.screen !== "chat") return;
+
+      const items = [
+        ...(this.editorType === "word"
+          ? [
+              { id: "ladcraft_rewrite", text: "Ladcraft: переписать выделение" },
+              { id: "ladcraft_comment", text: "Ladcraft: добавить комментарий" },
+            ]
+          : []),
+      ];
+      if (!items.length) return;
+
+      window.Asc.plugin.executeMethod(
+        "AddContextMenuItem",
+        [
+          {
+            guid:
+              window.Asc.plugin.guid ??
+              window.Asc.plugin.info?.guid ??
+              "ladcraft-r7",
+            items,
+          },
+        ],
+        () => undefined,
+      );
+    };
+
+    window.Asc.plugin.event_onContextMenuClick = (id: string) => {
+      if (id === "ladcraft_rewrite") void this.runQuickAction("rewrite");
+      if (id === "ladcraft_comment") void this.runQuickAction("comment");
+    };
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+
+let app: LadcraftR7App | null = null;
+
+window.Asc.plugin.init = function init() {
+  const root = document.getElementById("app");
+  if (!root) return;
+  app = new LadcraftR7App(root);
+  void app.start();
+};
+
+window.Asc.plugin.onDestroy = function onDestroy() {
+  void app?.shutdown();
+};
+
+window.Asc.plugin.button = function button() {
+  void app?.shutdown();
+};
+
+export { LadcraftR7App };

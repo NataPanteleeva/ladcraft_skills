@@ -1,0 +1,198 @@
+# Ladcraft rules for PI agent
+
+Этот файл сгенерирован приложением ladcraft-skills-studio.
+Источник: `.pi/ladcraft-docs/rules/skills_creation.mdc`.
+
+## Обязательный порядок работы
+- Перед созданием и правкой навыка прочитай документы из `.pi/ladcraft-docs/ru/`.
+- Не используй внешние репозитории как источник истины.
+- Контекст работы — корень папки с навыками (skills root).
+- Этот корень уже совпадает с выбранной пользователем папкой: не создавай лишний уровень каталога `skills/` внутри него для новых навыков, пока пользователь явно не попросит.
+- Для правок существующего навыка изменяй только выбранный `activeSkillPath`.
+- Для создания нового навыка создавай новую подпапку прямо в выбранном skills root и не меняй соседние навыки (в т.ч. когда в чате не выбран конкретный навык для агента — см. `.pi/APPEND_SYSTEM.md`).
+
+## Canonical rules (copied from skills_creation.mdc)
+
+Мы создаем навыки для сервиса Ladcraft.
+
+Основной источник правил: каталог `resources/skills-docs/ru/` (копируется в `.pi/ladcraft-docs/ru/` при привязке skills root) + рантайм ladcraft-skills-studio (редактор, превью, publish).
+
+0. **Контекст ladcraft-skills-studio (десктоп).**
+- Выбери корневую папку навыков (skills root) в настройках; документы канона синхронизируются в `.pi/ladcraft-docs/` внутри неё.
+- Редактируй навыки во встроенном редакторе; для Ladcraft remote — авторизация и действия из UI приложения.
+
+Канон формата навыка задаётся документацией в `resources/skills-docs/` и реализован в ladcraft-skills-studio; отдельный локальный dev-сервер для работы с навыками не требуется.
+
+1. **Перед созданием или правкой любого навыка прочитай документы в `.pi/ladcraft-docs/ru/` (или встроенный просмотр документации):**
+   - `rukovodstvo-navyki-ladcraft.md` (контракты и рабочий формат),
+   - `migraciya-navykov-ladcraft.md` (перенос из прототипа),
+   - `kriterii-revyu-navyka.md` (чеклист ревью),
+   - `skill-function-tutorial.md` (native `handler(state, params)` и runtime/state).
+   Создавать или править навыки без учета этого набора нельзя.
+   Для чтения документации используй manifest-first подход:
+   - сначала `read` файла `.pi/ladcraft-docs/manifest.json`;
+   - затем `read` файла `.pi/ladcraft-docs/ru/topic-index.json` и выбери релевантную topic-ветку;
+   - затем открывай только пути, которые реально перечислены в manifest;
+   - для больших файлов применяй chunked-read: сначала `read(path, offset=1, limit=120)`, дальше читай только нужные участки через `offset/limit`;
+   - если нужен конкретный раздел, сначала найди его заголовок/якорные слова, потом открывай окно вокруг нужного места, а не весь файл;
+   - не угадывай имена файлов и не вызывай `read` на директориях.
+   Важный приоритет: цель — максимально рабочий навык за один проход.
+   Для сложных задач не экономь чтение контекста искусственными лимитами; лучше добери релевантные шаблоны/anti-patterns до первой записи.
+
+2. Для разработки навыка используй ladcraft-skills-studio:
+- редактируй файлы навыка в отдельной подпапке внутри выбранного skills root (структура `SKILL.md`, `scripts/`, `widgets/`);
+- сохраняй и используй проверки в приложении как локальный technical check, а не как источник истины вместо Ladcraft backend;
+- при необходимости выполняй publish через UI Ladcraft.
+- для publish/deploy `SKILL.md` должен содержать непустой markdown body после frontmatter (это поле `skill` в payload Ladcraft и оно обязательно).
+- **Publish payload vs Ladcraft:** для **instruction-only** в итоговом JSON допустим пустой `tools: []`. `resources.timeout` трактуй как секунды, не миллисекунды. Если есть сомнение по диапазонам или shape payload, ориентируйся на фактический ответ Ladcraft backend, а не на локальные эвристики. Отсутствие ключа `environment` у tool в payload допустимо; если env нужен, publish-контрактом считается итоговый `tools[].environment` в payload. В авторинге разрешены оба источника: `scripts/*.meta.md -> environment.*` для конкретного tool и `SKILL.md -> mcp_spec.tools[].environment.*` как fallback/shared-описание. Если заданы оба, `*.meta.md` имеет приоритет.
+
+2.0.3. **Сначала зафиксируй effect-контракт задачи (до генерации кода):**
+- если пользователь просит "создать/сохранить/записать файл в рабочей области", инструмент обязан:
+  - действительно вызвать `state.capabilities.vfs.writeFile(...)` в `handler`;
+  - объявить `vfs` capability с операцией `writeFile` в `mcp_spec.tools[].capabilities.required`;
+- не подменяй side effect "красивым return": если задача про запись файла, результат должен включать фактическую запись в workspace, а не только текст в ответе.
+- если задача содержит side effects (VFS/network/storage), перед записью кода сверяйся с профильным approved template (`vfs-skill-example` / `sql-storage-skill-example` / `widget-skill-example` и т.д.).
+- если задача про таблицы/SQL storage в skill-скрипте: `type: sql-storage` с `get`/`runSQL`, PostgreSQL dialect, topic-index `sql-storage-tables`; не `type: sql` и не `state.capabilities.sql`.
+
+2.0. **Формат `scripts/*.js` / `scripts/*.py` (канон Ladcraft в ladcraft-skills-studio):**
+- в каждом JS tool-файле — **только** `async function handler(state, params) { ... }`; в каждом Python tool-файле — **только** `async def handler(state, params):`; вход `params`, контекст `state.environment` / `state.capabilities` и т.д. по контракту Ladcraft;
+- для Python укажи `runtime: python@3` во frontmatter `scripts/<tool>.meta.md` и используй файл `scripts/<tool>.py`; для JS используй `runtime: nodejs@24` или omit runtime и файл `.js`;
+- если контекст/настройки агента задают default runtime `python@3`, адаптируй approved JS templates к `scripts/<tool>.py`, `runtime: python@3` и `async def handler(state, params):`; не копируй `.js` / `async function` только потому, что пример в docs написан на JS;
+- если навык уже содержит `scripts/*.js` или `scripts/*.py` / `scripts/*.meta.md runtime`, существующий runtime важнее default-настройки: правь и расширяй навык на том языке, на котором он уже написан, если пользователь явно не просит переключить язык;
+- не использовать целевой legacy-вход без `handler` (`input`, `returnResult`, `returnResultInWidget` как единственный режим файла);
+- в JS не добавляй `module.exports` и `export`; publish/runtime ожидает локальное объявление `async function handler(state, params)`, а не module export shape;
+- в файле должен оставаться только `handler` и его тело; любой VM-bootstrap-хвост после объявления `handler` запрещён;
+- запрещено сохранять/публиковать хвосты вида `const result = await handler(...); returnResult(result);`, `const __result = await handler(...); returnResult(__result);` и варианты с `returnResultInWidget(...)`;
+- устаревший код при миграции переводится в `handler` (см. `migraciya-navykov-ladcraft.md` в `.pi/ladcraft-docs/ru/`).
+
+2.0.1. **Жёстко для агента (чтобы не плодить legacy-скрипты без handler):**
+- новый и правимый `scripts/*.js` / `scripts/*.py` — **всегда** только native `handler`; не начинай навык с шаблона «глобали + returnResult»;
+- не бери за образец случайные соседние папки навыков — ориентируйся на `.pi/ladcraft-docs/ru/`, approved templates и anti-patterns;
+- не смешивай в одном файле готовый `handler` и непереведённый legacy-слой; мигрируй целиком (см. `migraciya-navykov-ladcraft.md`);
+- VFS/KV/sql-storage — через `state.capabilities` по контракту из документации и шаблонов, не через произвольные глобали.
+
+2.0.2. **Жёстко для агента (TS-синтаксис в `.js` запрещён):**
+- **Стоп-сигнал:** если ты пишешь `scripts/*.js` или `tools/*.js` и у тебя рука тянется написать `as any`, `as Type`, `: Type`, `interface`, `type`, `enum` или JSDoc-типы — остановись. Это runtime JS tool, а не TypeScript-модуль. Отдельно помни: `export` и `module.exports` по-прежнему запрещены publish/runtime-контрактом.
+- `scripts/*.js` и `tools/*.js` писать только как plain JavaScript; не использовать TypeScript-синтаксис и JSDoc-типизацию в `.js`;
+- в `.js` запрещены: аннотации типа в сигнатурах и переменных (`: Type`), `as Type`, `as any`, `as unknown`, non-null assertion (`!`), generics (`<T>`), `interface`, `type`, `enum`;
+- в `.js` разрешены: `import`, `require`, динамический `import(...)`, Node builtin и внешние npm-модули, если файл остаётся canonical runtime JS tool; `import type` запрещён как TypeScript-синтаксис;
+- в `.js` запрещены: `export`, `module.exports` и любой иной module export shape, потому что publish/runtime ожидает локальное объявление `async function handler(state, params)`;
+- не переименовывай tool-файлы из `.js` в `.ts`, если это явно не запрошено пользователем и не поддержано целевым runtime/валидатором;
+- TypeScript diagnostics в `.js` не означают, что можно писать TypeScript. Если валидатор жалуется на `unknown` / `property does not exist`, исправляй это только runtime guards и helper-функциями (`asObject`, `getObject`, `getString`, `getNumber`, `getBoolean`, `getArray`, `getFunction`), а не типовыми костылями;
+- при исправлении типовых/контрактных ошибок в JS-скриптах работай в 2 фазы: (1) сохранить корректный plain JavaScript без TS-конструкций, (2) устранить остаточные контрактные ошибки через guards и ранний `return { ok: false, error: "..." }`;
+- перед завершением задачи по JS-tool обязательно сделай self-check: в `scripts/*.js` и `tools/*.js` есть `async function handler(state, params)`, нет `export`/`module.exports`, нет TypeScript-синтаксиса и JSDoc-типизации, нет legacy-хвостов, нет parser-ошибок валидатора (`8010`, `8013`, `8016`), а доступ к `state.environment` и `state.capabilities` защищён runtime guards.
+- перед завершением задачи по Python-tool обязательно сделай self-check: файл `scripts/*.py`, meta `runtime: python@3`, top-level `async def handler(state, params):`, нет JS `async function handler`, `module.exports`, TS/JSDoc-конструкций.
+- `validate_active_skill` считай только local JS/Python static + payload/build + payload-contract check. Он не доказывает runtime behavior, preview или окончательную publish-валидность навыка; окончательное решение за Ladcraft/backend.
+- При изменении контракта или поведения tool-а проверь связанный workflow навыка, а не только правимый файл: upstream-инструкции `SKILL.md`, `*.meta.md` schemas/descriptions, runtime-выход текущего tool, downstream tools, общий state/storage/coverage и виджеты, которые читают эти поля. Нельзя писать «готово/полностью исправлено», если проверена только сборка или `validate_active_skill`; в финале явно разделяй: что изменено, какие контракты сверены, что runtime не проверено, и какие найденные runtime-ошибки остались.
+
+2.0.2.1. **Дублирование навыка в новую папку (только новое имя / локальный форк):**
+- Не копируй навык через серию `read` по каждому файлу и последующую «сборку» по кускам: это лишние итерации, раздувание контекста и риск ошибок.
+- **В чате ladcraft-skills-studio в режиме agent (без shell):** для копии всего дерева используй инструмент **`duplicate_skill_folder`** — одна операция на стороне приложения (тот же отфильтрованный копи-пайплайн, что и UI/IPC `skills:copy-tree-as-new-local`), затем при необходимости открой только `SKILL.md` и поправь `description` (YAML `name` после копии выравнивается под basename папки).
+- **Если есть shell (полный доступ / терминал снаружи):** скопируй каталог **одной** файловой операцией уровня ОС (`rsync -a` с `--exclude`, `cp -R` + точечное удаление исключений и т.п.) — по смыслу как «форк» в студии.
+- Из копии **не переноси** служебные узлы: файл `.from-server.json` (привязка к remote skill id), каталоги `.remote-cache/`, `.build/`, `.skill-backups/`.
+- После копии для сценария «то же самое, другое имя» достаточно открыть и поправить **только** `SKILL.md`: YAML `name` и при необходимости `description` под новую папку и отображаемое имя в списке студии (если использовался `duplicate_skill_folder`, начни с проверки `description`).
+- Читать и менять `scripts/`, `widgets/`, остальное дерево имеет смысл **только** если пользователь просит изменить поведение клона, а не просто скопировать под новым названием.
+
+2.1. **Короткий env-алгоритм (обязателен для интеграций):**
+- сначала собери карту env-полей;
+- `environment.app` -> общие app-настройки интеграции (API key, client id/secret, base URL);
+- `environment.user` -> пользовательские параметры установки навыка;
+- `skillStorage` -> только runtime-state (кэш, счетчики, refresh-state), не постоянные креды.
+- `environment.user.<KEY>` всегда описывай объектом `{ title, format }`, а не строкой/числом/boolean напрямую. Разрешённые `format`: `string`, `number`, `boolean`, `email`, `uri`; для install-time массивов добавляй `isArray: true`.
+- Пример IMAP user env: `IMAP_HOST.format = string`, `IMAP_PORT.format = number`, `IMAP_USER.format = string`, `IMAP_PASS.format = string`, `IMAP_SECURE.format = boolean`.
+- Значения `environment.user` вводит пользователь при установке навыка; tool только читает их из `state.environment.user`.
+
+2.1.1. **Capability `skills` (list/get/update/create/install)**
+- Объявляй capability на уровне инструмента в `tools[].capabilities.required` с минимально нужными операциями:
+```json
+{
+  "capabilities": {
+    "required": [
+      {
+        "type": "skills",
+        "operations": ["list", "get", "update"]
+      }
+    ]
+  }
+}
+```
+- В `handler(state, params)` доступ только через `state.capabilities.skills`:
+```javascript
+const skills = state.capabilities.skills;
+const page = await skills.list({ limit: 20, offset: 0, search: params.search });
+const full = await skills.get(skillId);
+await skills.update(skillId, { description: `${full.description || ""}\n\nUpdated by tool` });
+```
+- Guardrails:
+  - least privilege: не запрашивай лишние операции;
+  - перед `update` сначала делай `get`, чтобы не терять поля при частичном апдейте;
+  - `create` и `install` объявляй только при явной задаче на создание/установку skill-приложения; installation values не выдумывай;
+  - для массовых сценариев используй явную пагинацию (`limit/offset`) и фильтры `status`.
+
+2.1.1.1. **Capability `userInfo`**
+- Если tool нужна информация о текущем пользователе, объявляй capability `userInfo` с операцией `get`.
+- В коде используй только `await state.capabilities.userInfo.get()`; runtime возвращает email пользователя или пустую строку.
+
+2.1.2. **Новый блок `general` на уровне skill-приложения**
+- Используй `general` для общих настроек, которые применяются ко всем tools:
+```json
+{
+  "general": {
+    "environment": {
+      "app": {
+        "API_BASE_URL": "https://api.example.com",
+        "DEFAULT_REGION": "eu"
+      }
+    },
+    "lib": [
+      {
+        "runtime": "nodejs@24",
+        "code": "function normalizeEmail(v){ return String(v || '').trim().toLowerCase(); }"
+      }
+    ]
+  }
+}
+```
+- Merge-приоритет:
+  - `general.environment.app` = общая база;
+  - `tools[].environment.app` переопределяет совпавшие ключи для конкретного tool.
+- Операционный контракт `general.lib[]`:
+  - задаётся только во frontmatter `SKILL.md -> general.lib[]`, а не как финальная папка `lib/`;
+  - runtime берёт первый непустой lib-блок с совпадающим `runtime` и добавляет его код перед tool handler;
+  - функции и константы из `general.lib[].code` доступны в tool-файле соответствующего runtime как top-level declarations: в JS вызывай напрямую без `require`, `import`, `module.exports` и `export`; в Python вызывай как обычные top-level функции/константы;
+  - для одного runtime держи один объединённый lib-блок; новый helper мержи в существующий блок, а не создавай конкурирующий блок с тем же runtime.
+- Migration guardrail для CommonJS helper:
+  - если `scripts/<helper>.js` содержит `module.exports`, а другие tools делают `require("./helper")`, не удаляй `module.exports` вслепую;
+  - сначала построй usage map, затем перенеси shared declarations в `SKILL.md -> general.lib[]`, перепиши tools на прямой вызов helper-функций, удали pseudo-tool `scripts/<helper>.js`/`.meta.md`, если это не реальный tool;
+  - локальная папка `lib/` допустима только как временный staging, но не как финальное deploy-ready решение зависимости.
+- Когда использовать:
+  - общий app-конфиг/хелперы для нескольких инструментов -> `general`;
+  - параметры только одного инструмента -> `tools[].environment`.
+
+2.2. **SKILL.md, meta и publish (кратко):**
+- в тексте `SKILL.md` запрещены вызовы инструментов, для которых нет файла `scripts/<имя>.meta.md` в этой же папке навыка (исключение — явно помеченные core-tools платформы вроде `delegateToAgent` с проверкой, что они есть в runtime);
+- ключи `state.environment.user`/`userEnv`, которые читает tool, должны быть объявлены в итоговом `environment.user` этого инструмента: либо прямо в `scripts/*.meta.md`, либо через `SKILL.md -> mcp_spec.tools[].environment.user` как fallback;
+- если в навыке один виджет, он должен быть согласован с output-контрактом инструмента;
+- «отключённый» legacy-tool нужно удалять физически (`*.js` + `*.meta.md`), иначе он попадёт в payload.
+
+2.2.1. **Виджеты и ответ `handler` (ladcraft-skills-studio + Ladcraft runtime):**
+- **`handler` возвращает только плоский объект** полей, совпадающий с `schemas.output` в `scripts/*.meta.md` и с тем, что реально читает шаблон `widgets/*.md` (каждое `<%= … %>` в EJS должно иметь одноимённое свойство в этом объекте на верхнем уровне).
+- **Запрещён** паттерн «описательного» результата вида `return { widget: { type: "html", name: "…", data: { … } } }` как замена встраивания виджета: платформа подставляет HTML виджета при publish и рендерит EJS от **плоского** результата tool, а не от вложенного `widget.data`.
+- **Связка tool → файл виджета:** либо basename `widgets/<slug>.md` и поле `name` во frontmatter виджета совпадают с `name` инструмента в `*.meta.md` / именем `scripts/<tool>.js` или `scripts/<tool>.py`, либо для JS в теле `handler` после нормализации кода явно задан маркер `/*__CURSOR_LADCRAFT_WIDGET_NAME__=<slug>*/` (см. approved `widget-skill-example`). Для Python предпочитай совпадение имени tool и widget. Иначе при publish шаблон может не попасть в payload.
+- В `scripts/*.meta.md` для инструментов с виджетом описывай **`schemas` (input/output)** в frontmatter; не опирайся только на устаревшие ключи `parameters` / `outputs` без `schemas` — редактор и publish ожидают канон `schemas`.
+- Перед тем как считать навык готовым: **превью виджета** в ladcraft-skills-studio для того же tool и **локальная валидация/линт** без ошибок по виджету и скрипту.
+
+3. Авторизация и refresh токена:
+- при `401/403` считай токен протухшим;
+- используй один из двух вариантов во встроенном UI ladcraft-skills-studio:
+  - вход через email/password;
+  - ручная вставка нового access token;
+- `LADCRAFT_REAUTH_URL` (если задан) можно использовать как вспомогательную ссылку;
+- после обновления повтори действие.
+
+4. Если подключён MCP в Cursor: следуй ограничениям read-only для bundled-архива; не подменяй локальный канон ladcraft-skills-studio выдуманными инструкциями из внешних репозиториев.
+
+5. Если пользователь просит конвертировать навык из прототипа:
+- следуй `migraciya-navykov-ladcraft.md` в `.pi/ladcraft-docs/ru/`;
+- работай только с копией навыка внутри выбранного skills root, исходник в `skills_prototype/` не меняй;
+- после адаптации обязательно прогоняй локальный тест перед publish.

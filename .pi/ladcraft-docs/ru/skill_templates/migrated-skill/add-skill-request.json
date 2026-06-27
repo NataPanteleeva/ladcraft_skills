@@ -1,0 +1,66 @@
+{
+  "name": "environment-user-example",
+  "description": "Reference payload для skill с environment.user и простым tool.",
+  "skill": "# Environment user example\n\nНавык показывает, как объявлять install-time user env для конкретного tool.",
+  "version": "1.0.0",
+  "author": "example",
+  "license": "MIT",
+  "tags": [],
+  "category": "productivity",
+  "icon": "",
+  "cover": "",
+  "tools": [
+    {
+      "name": "getConfiguredGreeting",
+      "description": "Возвращает приветствие на основе environment.user.GREETING_PREFIX.",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {
+          "GREETING_PREFIX": {
+            "title": "Greeting prefix",
+            "format": "string"
+          }
+        }
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "greeting"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "greeting": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\n  const userEnv = state?.environment?.user ?? {};\n  const prefix = typeof userEnv.GREETING_PREFIX === 'string' ? userEnv.GREETING_PREFIX : 'Hello';\n  const name = typeof params?.name === 'string' ? params.name : 'world';\n  return { ok: true, greeting: `${prefix}, ${name}!` };\n}"
+    }
+  ]
+}

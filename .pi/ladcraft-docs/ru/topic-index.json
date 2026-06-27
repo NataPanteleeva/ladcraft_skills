@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "description": "Маршрутизатор документации Ladcraft: какие файлы читать по типу задачи.",
+  "topics": {
+    "new-skill-minimal": [
+      "ru/README.md",
+      "ru/skill_templates/minimal-skill/README.md",
+      "ru/skill_templates/minimal-skill/SKILL.md",
+      "ru/skill_templates/minimal-skill/scripts/primer.meta.md"
+    ],
+    "instruction-only": [
+      "ru/README.md",
+      "ru/skill_templates/instruction-only-example/README.md",
+      "ru/skill_templates/instruction-only-example/SKILL.md"
+    ],
+    "vfs-file-write": [
+      "ru/skill-function-tutorial.md",
+      "ru/skill_templates/vfs-skill-example/README.md",
+      "ru/skill_templates/vfs-skill-example/SKILL.md",
+      "ru/skill_templates/vfs-skill-example/scripts/saveWorkspaceNote.meta.md"
+    ],
+    "sql-storage-tables": [
+      "ru/skill-function-tutorial.md",
+      "ru/skill_templates/sql-storage-skill-example/README.md",
+      "ru/skill_templates/sql-storage-skill-example/SKILL.md",
+      "ru/skill_templates/sql-storage-skill-example/scripts/seedTable.meta.md",
+      "ru/skill_templates/anti-patterns/sql-vs-sql-storage.md"
+    ],
+    "widgets": [
+      "ru/rukovodstvo-navyki-ladcraft.md",
+      "ru/skill_templates/widget-skill-example/README.md",
+      "ru/skill_templates/widget-skill-example/SKILL.md",
+      "ru/skill_templates/widget-skill-example/scripts/showStatusCard.meta.md"
+    ],
+    "environment-auth-config": [
+      "ru/README.md",
+      "ru/skill_templates/environment-user-example/README.md",
+      "ru/skill_templates/environment-user-example/SKILL.md",
+      "ru/skill_templates/environment-user-example/scripts/getConfiguredGreeting.meta.md"
+    ],
+    "oauth-auth-integration": [
+      "ru/skill-function-tutorial.md",
+      "ru/skill_templates/environment-user-example/README.md",
+      "ru/skill_templates/runtime-handler-reference/README.md",
+      "ru/skill_templates/anti-patterns/environment-in-meta.meta.md"
+    ],
+    "subagents-tool-orchestration": [
+      "ru/skill-function-tutorial.md",
+      "ru/skill_templates/runtime-handler-reference/README.md",
+      "ru/skill_templates/migrated-skill/README.md"
+    ],
+    "external-api-network-environment": [
+      "ru/skill-function-tutorial.md",
+      "ru/skill_templates/runtime-handler-reference/README.md",
+      "ru/skill_templates/environment-user-example/README.md"
+    ],
+    "skills-capability-and-general": [
+      "ru/README.md",
+      "ru/rukovodstvo-navyki-ladcraft.md",
+      "ru/skill-function-tutorial.md",
+      "ru/skill_templates/general-lib-shared-helper/README.md",
+      "ru/skill_templates/general-lib-shared-helper/SKILL.md",
+      "ru/skill_templates/general-lib-shared-helper/scripts/normalizeLead.meta.md",
+      "ru/skill_templates/general-lib-shared-helper/scripts/renderLead.meta.md",
+      "ru/runtime-capabilities.snapshot.json"
+    ],
+    "host-agent-tools": [
+      "ru/host-agent-tools-appendix.md",
+      "ru/runtime-capabilities.snapshot.json"
+    ],
+    "validation-and-prepublish": [
+      "ru/kriterii-revyu-navyka.md",
+      "ru/skill_templates/anti-patterns/README.md"
+    ],
+    "migration": [
+      "ru/migraciya-navykov-ladcraft.md",
+      "ru/skill_templates/migrated-skill/README.md"
+    ],
+    "anti-patterns": [
+      "ru/skill_templates/anti-patterns/README.md",
+      "ru/skill_templates/anti-patterns/local-style-not-target.md",
+      "ru/skill_templates/anti-patterns/environment-in-meta.meta.md",
+      "ru/skill_templates/anti-patterns/ghost-tools-skill.md",
+      "ru/skill_templates/anti-patterns/sql-vs-sql-storage.md"
+    ]
+  },
+  "selectionHints": {
+    "default": [
+      "ru/README.md",
+      "ru/skill-function-tutorial.md"
+    ],
+    "if-task-requires-workspace-file-write": [
+      "ru/skill_templates/vfs-skill-example/README.md"
+    ],
+    "if-task-requires-sql-storage": [
+      "ru/skill_templates/sql-storage-skill-example/README.md",
+      "ru/skill_templates/anti-patterns/sql-vs-sql-storage.md"
+    ],
+    "if-task-requires-environment-or-auth": [
+      "ru/skill_templates/environment-user-example/README.md",
+      "ru/skill_templates/runtime-handler-reference/README.md"
+    ],
+    "if-task-requires-external-api-network": [
+      "ru/skill_templates/runtime-handler-reference/README.md"
+    ],
+    "if-task-requires-tool-orchestration": [
+      "ru/skill_templates/migrated-skill/README.md",
+      "ru/host-agent-tools-appendix.md"
+    ],
+    "if-task-involves-host-agent-tool": [
+      "ru/host-agent-tools-appendix.md"
+    ],
+    "if-task-involves-legacy-or-validator-fixes": [
+      "ru/skill_templates/anti-patterns/README.md"
+    ]
+  },
+  "readingPlaybook": {
+    "order": [
+      "read .pi/ladcraft-docs/manifest.json first",
+      "read .pi/ladcraft-docs/ru/topic-index.json and pick a topic branch",
+      "open only files listed in manifest and selected topic",
+      "for large files use chunked reads: start with offset=1, limit=120",
+      "if a specific section is needed, locate heading keywords and read only nearby chunks",
+      "for complex tasks, continue targeted reads until context is sufficient for one-pass deploy-ready output"
+    ],
+    "chunkDefaults": {
+      "initialLimit": 120,
+      "followupLimit": 120
+    }
+  }
+}

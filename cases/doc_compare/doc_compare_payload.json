@@ -1,0 +1,614 @@
+{
+  "name": "doc_compare_toolkit",
+  "description": "Инструментарий сравнения документов R7: resolve_r7_document с retry, шаблоны, отчёт temp.md.",
+  "skill": "Навык `doc_compare_toolkit` для сравнения документа R7 с шаблоном.\r\n\r\n## R7 (ladcraft-r7)\r\n\r\n- Snapshot: `/session/r7/r7-{sanitizedDocKey}.json` (`r7-snapshot/v1`).\r\n- **Первый ход:** `startup_session` — resolve + список шаблонов; выведи `greeting_markdown` **дословно**.\r\n- **Запрещено** перечислять шаблоны без результата `startup_session` или `list_templates`.\r\n- Шаблоны: только `*.md` из `/workspace/Templates/`; в чате — `display_name` (без расширения).\r\n- Отчёт: `compare_with_template` → `temp.md` в workspace.\r\n\r\n## Инструменты\r\n\r\n- `startup_session(session_file?, doc_key?, retries?, wait_ms?)` — старт сессии: resolve R7 + `list_templates`; верни `greeting_markdown` для первого ответа.\r\n- `resolve_r7_document(doc_key?, session_file?, retries?, wait_ms?)` — найти snapshot с retry.\r\n- `list_session_files(retries?, wait_ms?)` — список json в `/session/r7/`.\r\n- `list_templates` — только `*.md` из `/workspace/Templates/`; `display_name` без `.md`.\r\n- `compare_with_template(template_name)` — отчёт из `temp.md`.\r\n- `insert_report_into_document` / `save_report_for_download` — выдача отчёта.",
+  "version": "1.0.2",
+  "tags": [
+    "demo",
+    "document-compare",
+    "vfs",
+    "r7"
+  ],
+  "category": "productivity",
+  "icon": "document",
+  "tools": [
+    {
+      "name": "startup_session",
+      "description": "Старт сессии — resolve R7 snapshot и список шаблонов Templates; возвращает greeting_markdown для первого ответа.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 60,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "session_file": {
+              "type": "string",
+              "description": "Path из mentioned.files[0].file_name."
+            },
+            "doc_key": {
+              "type": "string",
+              "description": "Опционально, из title чата R7."
+            },
+            "retries": {
+              "type": "integer"
+            },
+            "wait_ms": {
+              "type": "integer"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "greeting_markdown",
+            "session_file",
+            "templates"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "greeting_markdown": {
+              "type": "string"
+            },
+            "session_file": {
+              "type": "string"
+            },
+            "doc_key": {
+              "type": "string"
+            },
+            "document": {
+              "type": "object"
+            },
+            "templates": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "function": "function isTemplateFileName(name) {\n  const lower = name.toLowerCase();\n  return lower.endsWith('.md') || lower.endsWith('.markdown');\n}\n\nfunction stripTemplateExtension(name) {\n  return name.replace(/\\.(md|markdown)$/i, '');\n}\n\nasync function handlerListTemplates(state) {\n  const vfs = getVfs(state);\n  if (!vfs || typeof vfs.listDir !== 'function') {\n    return { ok: false, error: 'VFS listDir недоступен', templates: [], count: 0 };\n  }\n  const dir = templatesDir();\n  let entries = [];\n  try {\n    const raw = await vfs.listDir(dir);\n    entries = Array.isArray(raw) ? raw : [];\n  } catch (e) {\n    return { ok: false, error: 'Каталог шаблонов не найден', templates: [], count: 0, templates_dir: dir };\n  }\n  const templates = [];\n  for (let i = 0; i < entries.length; i++) {\n    const entry = entries[i];\n    if (!entry || typeof entry !== 'object') continue;\n    const name = typeof entry.name === 'string' ? entry.name.trim() : '';\n    if (!name || name === '.' || name === '..') continue;\n    const isDir = entry.isDirectory === true || entry.type === 'directory';\n    if (isDir) continue;\n    if (!isTemplateFileName(name)) continue;\n    templates.push({\n      name: name,\n      display_name: stripTemplateExtension(name),\n      path: dir + '/' + name\n    });\n  }\n  templates.sort(function (a, b) {\n    return a.display_name.localeCompare(b.display_name, 'ru');\n  });\n  return { ok: true, templates: templates, count: templates.length, templates_dir: dir };\n}\n\nasync function handlerResolve(state, params) {\n  const vfs = getVfs(state);\n  if (!vfs) {\n    return { ok: false, error: 'VFS недоступен', found: false, session_file: '', attempts: 0 };\n  }\n  const sessionFileHint = normalizeSessionFilePath(getString(params, 'session_file'));\n  const docKey = getString(params, 'doc_key').trim();\n  let retries = getNumber(params, 'retries');\n  let waitMs = getNumber(params, 'wait_ms');\n  if (!retries || retries < 1) retries = 3;\n  if (retries > 8) retries = 8;\n  if (!waitMs || waitMs < 0) waitMs = 2000;\n  if (waitMs > 10000) waitMs = 10000;\n  const candidates = [];\n  if (sessionFileHint) candidates.push(sessionFileHint);\n  if (docKey) {\n    const fromKey = r7SnapshotPathFromDocKey(docKey);\n    if (fromKey && candidates.indexOf(fromKey) === -1) candidates.push(fromKey);\n  }\n  let attempts = 0;\n  let lastReason = 'not_found';\n  for (let round = 0; round < retries; round++) {\n    attempts = round + 1;\n    for (let c = 0; c < candidates.length; c++) {\n      const p = candidates[c];\n      const status = await vfsSnapshotReady(vfs, p);\n      if (status.ready) {\n        return {\n          ok: true,\n          found: true,\n          session_file: p,\n          doc_key: docKey,\n          attempts: attempts,\n          source: sessionFileHint === p ? 'session_file' : 'doc_key'\n        };\n      }\n      lastReason = status.reason || 'not_found';\n    }\n    const scanned = await scanR7SessionFiles(vfs);\n    for (let i = 0; i < scanned.length; i++) {\n      const item = scanned[i];\n      if (item.kind === 'r7_snapshot' || item.path.indexOf('/session/r7/') !== -1) {\n        const status = await vfsSnapshotReady(vfs, item.path);\n        if (status.ready) {\n          return {\n            ok: true,\n            found: true,\n            session_file: item.path,\n            doc_key: docKey,\n            attempts: attempts,\n            source: 'scan'\n          };\n        }\n        lastReason = status.reason || 'empty_body';\n      }\n    }\n    if (round < retries - 1) await sleepMs(waitMs);\n  }\n  return {\n    ok: true,\n    found: false,\n    session_file: candidates.length ? candidates[0] : '',\n    doc_key: docKey,\n    attempts: attempts,\n    reason: lastReason\n  };\n}\n\nasync function handler(state, params) {\n  const sessionFileHint = normalizeSessionFilePath(getString(params, 'session_file'));\n  let docKey = getString(params, 'doc_key').trim();\n  if (!docKey && sessionFileHint) {\n    const base = sessionFileHint.split('/').pop() || '';\n    const m = base.match(/^r7-word_(.+)\\.json$/i);\n    if (m) docKey = 'word:' + m[1];\n  }\n  const docResult = await handlerResolve(state, {\n    session_file: sessionFileHint,\n    doc_key: docKey,\n    retries: getNumber(params, 'retries') || 3,\n    wait_ms: getNumber(params, 'wait_ms') || 2000\n  });\n  const tplResult = await handlerListTemplates(state);\n  const templates = tplResult && tplResult.templates ? tplResult.templates : [];\n  const lines = [];\n  for (let i = 0; i < templates.length; i++) {\n    lines.push((i + 1) + '. ' + templates[i].display_name);\n  }\n  let snapshotLabel = 'документ Word';\n  if (docResult && docResult.session_file) {\n    const parts = docResult.session_file.split('/');\n    const fileName = parts[parts.length - 1] || docResult.session_file;\n    snapshotLabel = fileName.replace(/\\.json$/i, '');\n  }\n  let greeting = '';\n  if (docResult && docResult.found) {\n    greeting += 'Документ получен: **' + snapshotLabel + '**.\\n\\n';\n  } else {\n    greeting += 'Документ пока не найден в session VFS — дождитесь завершения upload плагина.\\n\\n';\n  }\n  greeting += 'Я — **агент сравнения документов**.\\n\\n';\n  greeting += '**Доступные шаблоны:**\\n\\n';\n  if (lines.length > 0) {\n    greeting += lines.join('\\n') + '\\n\\n';\n  } else {\n    greeting += '_Шаблоны не найдены — добавьте `.md` в папку Templates (Файлы агента)._\\n\\n';\n  }\n  greeting += 'Укажите номер или название шаблона для сравнения.';\n  return {\n    ok: true,\n    greeting_markdown: greeting,\n    session_file: docResult && docResult.session_file ? docResult.session_file : sessionFileHint,\n    doc_key: docKey || (docResult ? docResult.doc_key : ''),\n    document: docResult,\n    templates: tplResult\n  };\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    },
+    {
+      "name": "resolve_r7_document",
+      "description": "Находит r7-snapshot в session VFS: по session_file (mentioned.files), doc_key (из title чата R7: word:…) или сканированию /session/r7/. Повторяет попытки при гонке upload/message.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 90,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "session_file": {
+              "type": "string",
+              "description": "Полный path из mentioned.files[0].file_name, например /session/r7/r7-word_….json"
+            },
+            "doc_key": {
+              "type": "string",
+              "description": "docKey из title чата, например word:7b6db4c8d218664ebb84"
+            },
+            "retries": {
+              "type": "integer",
+              "description": "Число попыток (по умолчанию 3, макс. 8)."
+            },
+            "wait_ms": {
+              "type": "integer",
+              "description": "Пауза между попытками в мс (по умолчанию 2000, макс. 10000)."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "found",
+            "attempts"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "found": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            },
+            "session_file": {
+              "type": "string"
+            },
+            "doc_key": {
+              "type": "string"
+            },
+            "attempts": {
+              "type": "integer"
+            },
+            "source": {
+              "type": "string"
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "files": {
+              "type": "array"
+            },
+            "hint": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const vfs = getVfs(state);\r\n  if (!vfs) {\r\n    return { ok: false, error: 'VFS недоступен', found: false, session_file: '', attempts: 0 };\r\n  }\r\n\r\n  const sessionFileHint = normalizeSessionFilePath(getString(params, 'session_file'));\r\n  const docKey = getString(params, 'doc_key').trim();\r\n  let retries = getNumber(params, 'retries');\r\n  let waitMs = getNumber(params, 'wait_ms');\r\n  if (!retries || retries < 1) retries = 3;\r\n  if (retries > 8) retries = 8;\r\n  if (!waitMs || waitMs < 0) waitMs = 2000;\r\n  if (waitMs > 10000) waitMs = 10000;\r\n\r\n  const candidates = [];\r\n  if (sessionFileHint) candidates.push(sessionFileHint);\r\n  if (docKey) {\r\n    const fromKey = r7SnapshotPathFromDocKey(docKey);\r\n    if (fromKey && candidates.indexOf(fromKey) === -1) candidates.push(fromKey);\r\n  }\r\n\r\n  let attempts = 0;\r\n  let lastReason = 'not_found';\r\n\r\n  for (let round = 0; round < retries; round++) {\r\n    attempts = round + 1;\r\n\r\n    for (let c = 0; c < candidates.length; c++) {\r\n      const path = candidates[c];\r\n      const status = await vfsSnapshotReady(vfs, path);\r\n      if (status.ready) {\r\n        return {\r\n          ok: true,\r\n          found: true,\r\n          session_file: path,\r\n          doc_key: docKey,\r\n          attempts: attempts,\r\n          source: sessionFileHint === path ? 'session_file' : 'doc_key',\r\n          reason: 'ready',\r\n          body_length: status.body_length\r\n        };\r\n      }\r\n      lastReason = status.reason || 'not_found';\r\n    }\r\n\r\n    const scanned = await scanR7SessionFiles(vfs);\r\n    for (let i = 0; i < scanned.length; i++) {\r\n      const item = scanned[i];\r\n      if (item.kind === 'r7_snapshot' || item.path.indexOf('/session/r7/') !== -1) {\r\n        const status = await vfsSnapshotReady(vfs, item.path);\r\n        if (status.ready) {\r\n          return {\r\n            ok: true,\r\n            found: true,\r\n            session_file: item.path,\r\n            doc_key: docKey,\r\n            attempts: attempts,\r\n            source: 'scan',\r\n            reason: 'ready',\r\n            body_length: status.body_length,\r\n            files: scanned\r\n          };\r\n        }\r\n        lastReason = status.reason || 'empty_body';\r\n      }\r\n    }\r\n\r\n    if (round < retries - 1) {\r\n      await sleepMs(waitMs);\r\n    }\r\n  }\r\n\r\n  const lastScan = await scanR7SessionFiles(vfs);\r\n  return {\r\n    ok: true,\r\n    found: false,\r\n    session_file: candidates.length ? candidates[0] : '',\r\n    doc_key: docKey,\r\n    attempts: attempts,\r\n    reason: lastReason,\r\n    candidates: candidates,\r\n    files: lastScan,\r\n    hint: 'Повторите resolve_r7_document через несколько секунд или дождитесь завершения upload плагина.'\r\n  };\r\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    },
+    {
+      "name": "list_session_files",
+      "description": "Список r7-snapshot и других json в /session/r7/ и /session/. Поддерживает retries/wait_ms при гонке upload плагина и первого сообщения.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 90,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "retries": {
+              "type": "integer",
+              "description": "Число попыток (по умолчанию 1, макс. 8)."
+            },
+            "wait_ms": {
+              "type": "integer",
+              "description": "Пауза между попытками в мс (по умолчанию 0)."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "files",
+            "count"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "path"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "count": {
+              "type": "integer"
+            },
+            "attempts": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const vfs = getVfs(state);\r\n  if (!vfs) {\r\n    return { ok: false, error: 'VFS недоступен', files: [], count: 0 };\r\n  }\r\n\r\n  let retries = getNumber(params, 'retries');\r\n  let waitMs = getNumber(params, 'wait_ms');\r\n  if (!retries || retries < 1) retries = 1;\r\n  if (retries > 8) retries = 8;\r\n  if (!waitMs || waitMs < 0) waitMs = 0;\r\n  if (waitMs > 10000) waitMs = 10000;\r\n\r\n  let files = [];\r\n  for (let round = 0; round < retries; round++) {\r\n    const scanned = await scanR7SessionFiles(vfs);\r\n    files = [];\r\n    for (let i = 0; i < scanned.length; i++) {\r\n      const item = scanned[i];\r\n      const status = await vfsSnapshotReady(vfs, item.path);\r\n      files.push({\r\n        name: item.name,\r\n        path: item.path,\r\n        kind: item.kind,\r\n        ready: status.ready === true,\r\n        reason: status.reason\r\n      });\r\n    }\r\n    const readyCount = files.filter(function (f) { return f.ready; }).length;\r\n    if (files.length > 0 && readyCount > 0) {\r\n      return { ok: true, files: files, count: files.length, ready_count: readyCount, attempts: round + 1 };\r\n    }\r\n    if (round < retries - 1 && waitMs > 0) {\r\n      await sleepMs(waitMs);\r\n    }\r\n  }\r\n\r\n  return { ok: true, files: files, count: files.length, ready_count: 0, attempts: retries };\r\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    },
+    {
+      "name": "list_templates",
+      "description": "Возвращает список шаблонов из папки Templates рабочей области агента.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "_unused": {
+              "type": "string",
+              "description": "Не используется."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "templates",
+            "count"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            },
+            "templates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "display_name",
+                  "path"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Имя файла с расширением (для compare_with_template)."
+                  },
+                  "display_name": {
+                    "type": "string",
+                    "description": "Имя без расширения — показывать пользователю."
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "count": {
+              "type": "integer"
+            },
+            "templates_dir": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "function isTemplateFileName(name) {\r\n  const lower = name.toLowerCase();\r\n  return lower.endsWith('.md') || lower.endsWith('.markdown');\r\n}\r\n\r\nfunction stripTemplateExtension(name) {\r\n  return name.replace(/\\.(md|markdown)$/i, '');\r\n}\r\n\r\nasync function handler(state, params) {\r\n  const vfs = getVfs(state);\r\n  if (!vfs || typeof vfs.listDir !== 'function') {\r\n    return { ok: false, error: 'VFS listDir недоступен', templates: [] };\r\n  }\r\n\r\n  const dir = templatesDir();\r\n  let entries = [];\r\n  try {\r\n    const raw = await vfs.listDir(dir);\r\n    entries = Array.isArray(raw) ? raw : [];\r\n  } catch (e) {\r\n    return { ok: false, error: 'Каталог шаблонов не найден', templates: [], templates_dir: dir };\r\n  }\r\n\r\n  const templates = [];\r\n  for (let i = 0; i < entries.length; i++) {\r\n    const entry = entries[i];\r\n    if (!entry || typeof entry !== 'object') continue;\r\n    const name = typeof entry.name === 'string' ? entry.name.trim() : '';\r\n    if (!name || name === '.' || name === '..') continue;\r\n    const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n    if (isDir) continue;\r\n    if (!isTemplateFileName(name)) continue;\r\n\r\n    templates.push({\r\n      name: name,\r\n      display_name: stripTemplateExtension(name),\r\n      path: dir + '/' + name\r\n    });\r\n  }\r\n\r\n  templates.sort(function (a, b) {\r\n    return a.display_name.localeCompare(b.display_name, 'ru');\r\n  });\r\n\r\n  return {\r\n    ok: true,\r\n    templates: templates,\r\n    count: templates.length,\r\n    templates_dir: dir\r\n  };\r\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    },
+    {
+      "name": "compare_with_template",
+      "description": "Сравнивает загруженный документ с выбранным шаблоном и возвращает отчёт в формате Markdown.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 256,
+        "timeout": 60,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "template_name"
+          ],
+          "properties": {
+            "template_name": {
+              "type": "string",
+              "description": "Имя файла шаблона из папки Templates (как в list_templates)."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            },
+            "template_name": {
+              "type": "string"
+            },
+            "template_path": {
+              "type": "string"
+            },
+            "report_markdown": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const vfs = getVfs(state);\r\n  if (!vfs || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, error: 'VFS readFile недоступен' };\r\n  }\r\n\r\n  const templateName = getString(params, 'template_name').trim();\r\n  if (!templateName) {\r\n    return { ok: false, error: 'template_name обязателен' };\r\n  }\r\n\r\n  const templatePath = templatesDir() + '/' + templateName.replace(/^\\/+/, '');\r\n  let templateExists = false;\r\n  if (typeof vfs.exists === 'function') {\r\n    try {\r\n      templateExists = await vfs.exists(templatePath);\r\n    } catch (e) {\r\n      templateExists = false;\r\n    }\r\n  }\r\n  if (!templateExists) {\r\n    try {\r\n      const probe = await vfs.readFile(templatePath);\r\n      templateExists = typeof probe === 'string';\r\n    } catch (e) {\r\n      templateExists = false;\r\n    }\r\n  }\r\n  if (!templateExists) {\r\n    return { ok: false, error: 'Шаблон не найден: ' + templateName, template_name: templateName };\r\n  }\r\n\r\n  const reportFile = reportPath();\r\n  let reportMarkdown = '';\r\n  try {\r\n    reportMarkdown = await vfs.readFile(reportFile);\r\n  } catch (e) {\r\n    return { ok: false, error: 'Не удалось получить отчёт сравнения', template_name: templateName };\r\n  }\r\n  if (typeof reportMarkdown !== 'string' || !reportMarkdown.trim()) {\r\n    return { ok: false, error: 'Отчёт сравнения пуст', template_name: templateName };\r\n  }\r\n\r\n  return {\r\n    ok: true,\r\n    template_name: templateName,\r\n    template_path: templatePath,\r\n    report_markdown: reportMarkdown\r\n  };\r\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    },
+    {
+      "name": "insert_report_into_document",
+      "description": "Сохраняет отчёт сравнения в /workspace/ для вставки в документ R7 (не изменяет r7-snapshot JSON в /session/). Для вставки в Word используйте r7-export после этого tool.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "session_file",
+            "report_markdown"
+          ],
+          "properties": {
+            "session_file": {
+              "type": "string",
+              "description": "Bash-path к r7-snapshot в /session/r7/ (из list_session_files или mentioned.files)."
+            },
+            "report_markdown": {
+              "type": "string",
+              "description": "Текст отчёта сравнения."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            },
+            "session_file": {
+              "type": "string"
+            },
+            "workspace_report_path": {
+              "type": "string"
+            },
+            "file_name": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const vfs = getVfs(state);\r\n  if (!vfs || typeof vfs.writeFile !== 'function') {\r\n    return { ok: false, error: 'VFS writeFile недоступен' };\r\n  }\r\n\r\n  const sessionFile = getString(params, 'session_file').trim();\r\n  const reportMarkdown = getString(params, 'report_markdown');\r\n  if (!sessionFile) {\r\n    return { ok: false, error: 'session_file обязателен' };\r\n  }\r\n  if (!reportMarkdown.trim()) {\r\n    return { ok: false, error: 'report_markdown обязателен' };\r\n  }\r\n\r\n  const snapshotPath = sessionFile.startsWith('/session/')\r\n    ? sessionFile\r\n    : sessionPath(sessionFile.replace(/^\\/+/, ''));\r\n\r\n  const reportFileName = 'otchet_sravneniya_dlya_vstavki.md';\r\n  const workspacePath = '/workspace/' + reportFileName;\r\n\r\n  const header =\r\n    '<!-- compare-report source_snapshot: ' + snapshotPath + ' -->\\n\\n';\r\n  await vfs.writeFile(workspacePath, header + reportMarkdown.trim() + '\\n');\r\n\r\n  return {\r\n    ok: true,\r\n    session_file: snapshotPath,\r\n    workspace_report_path: workspacePath,\r\n    file_name: reportFileName,\r\n    note: 'Отчёт сохранён в workspace для вставки в документ R7 через r7-export.'\r\n  };\r\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    },
+    {
+      "name": "save_report_for_download",
+      "description": "Сохраняет отчёт сравнения в рабочую область агента для скачивания пользователем.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile",
+              "writeFile",
+              "listDir",
+              "getFileMetadata",
+              "exists"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "report_markdown"
+          ],
+          "properties": {
+            "report_markdown": {
+              "type": "string",
+              "description": "Текст отчёта сравнения."
+            },
+            "file_name": {
+              "type": "string",
+              "description": "Имя файла для скачивания (по умолчанию otchet_sravneniya.md)."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            },
+            "download_path": {
+              "type": "string"
+            },
+            "file_name": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const vfs = getVfs(state);\r\n  if (!vfs || typeof vfs.writeFile !== 'function') {\r\n    return { ok: false, error: 'VFS writeFile недоступен' };\r\n  }\r\n\r\n  const reportMarkdown = getString(params, 'report_markdown');\r\n  if (!reportMarkdown.trim()) {\r\n    return { ok: false, error: 'report_markdown обязателен' };\r\n  }\r\n\r\n  let fileName = getString(params, 'file_name').trim();\r\n  if (!fileName) {\r\n    fileName = 'otchet_sravneniya.md';\r\n  }\r\n  fileName = fileName.replace(/^\\/+/, '').replace(/\\.\\./g, '');\r\n  if (!fileName.toLowerCase().endsWith('.md')) {\r\n    fileName = fileName + '.md';\r\n  }\r\n\r\n  const destPath = '/workspace/' + fileName;\r\n  await vfs.writeFile(destPath, reportMarkdown.trim() + '\\n');\r\n\r\n  return {\r\n    ok: true,\r\n    download_path: destPath,\r\n    file_name: fileName\r\n  };\r\n}\nfunction asObject(value) {\r\n  return value && typeof value === 'object' ? value : null;\r\n}\r\nfunction getString(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return '';\r\n  const value = object[key];\r\n  return typeof value === 'string' ? value : '';\r\n}\r\nfunction getNumber(source, key) {\r\n  const object = asObject(source);\r\n  if (!object) return 0;\r\n  const value = object[key];\r\n  return typeof value === 'number' && Number.isFinite(value) ? value : 0;\r\n}\r\nfunction getVfs(state) {\r\n  const caps = asObject(state && state.capabilities);\r\n  const vfs = caps ? caps.vfs : null;\r\n  return vfs && typeof vfs === 'object' ? vfs : null;\r\n}\r\nfunction templatesDir() {\r\n  return '/workspace/Templates';\r\n}\r\nfunction reportPath() {\r\n  return '/workspace/temp.md';\r\n}\r\nfunction r7SessionDir() {\r\n  return '/session/r7';\r\n}\r\nfunction sessionPath(fileName) {\r\n  const name = typeof fileName === 'string' ? fileName.trim().replace(/^\\/+/, '') : '';\r\n  if (!name) return '';\r\n  return '/session/' + name;\r\n}\r\nfunction sleepMs(ms) {\r\n  const n = typeof ms === 'number' && ms > 0 ? ms : 0;\r\n  if (!n) return Promise.resolve();\r\n  return new Promise(function (resolve) {\r\n    setTimeout(resolve, n);\r\n  });\r\n}\r\nfunction sanitizeR7DocKey(docKey) {\r\n  const raw = typeof docKey === 'string' ? docKey.trim() : '';\r\n  if (!raw) return '';\r\n  let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');\r\n  s = s.replace(/^_+|_+$/g, '');\r\n  if (s.length > 80) s = s.slice(0, 80);\r\n  return s;\r\n}\r\nfunction r7SnapshotFileName(docKey) {\r\n  const s = sanitizeR7DocKey(docKey);\r\n  if (!s) return '';\r\n  return 'r7-' + s + '.json';\r\n}\r\nfunction r7SnapshotPathFromDocKey(docKey) {\r\n  const name = r7SnapshotFileName(docKey);\r\n  if (!name) return '';\r\n  return r7SessionDir() + '/' + name;\r\n}\r\nfunction normalizeSessionFilePath(pathValue) {\r\n  const raw = typeof pathValue === 'string' ? pathValue.trim() : '';\r\n  if (!raw) return '';\r\n  if (raw.startsWith('/session/')) return raw;\r\n  if (raw.startsWith('~/session/')) return '/' + raw.slice(2);\r\n  if (raw.startsWith('session/')) return '/' + raw;\r\n  return sessionPath(raw.replace(/^\\/+/, ''));\r\n}\r\nconst R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';\r\nconst R7_MIN_BODY_CHARS = 1;\r\nfunction extractR7BodyTextFromParsed(parsed) {\r\n  if (!parsed || typeof parsed !== 'object') return '';\r\n  const body = parsed.body;\r\n  if (body && typeof body.text === 'string' && body.text.trim()) {\r\n    return body.text;\r\n  }\r\n  if (Array.isArray(parsed.content)) {\r\n    return parsed.content\r\n      .map(function (p) { return String(p).trim(); })\r\n      .filter(Boolean)\r\n      .join('\\n\\n');\r\n  }\r\n  return '';\r\n}\r\nfunction tryParseR7SnapshotRaw(raw) {\r\n  const trimmed = typeof raw === 'string' ? raw.trim().replace(/^\\uFEFF/, '') : '';\r\n  if (!trimmed) {\r\n    return { ok: false, reason: 'empty_body', raw: raw || '' };\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(trimmed);\r\n    const schema = parsed && parsed.schema ? String(parsed.schema) : '';\r\n    if (schema !== R7_SNAPSHOT_SCHEMA) {\r\n      return { ok: false, reason: 'bad_schema', raw: trimmed, schema: schema };\r\n    }\r\n    const bodyText = extractR7BodyTextFromParsed(parsed);\r\n    if (!bodyText || bodyText.length < R7_MIN_BODY_CHARS) {\r\n      return { ok: false, reason: 'empty_body', raw: trimmed, schema: schema, body_length: bodyText.length };\r\n    }\r\n    return {\r\n      ok: true,\r\n      reason: 'ready',\r\n      raw: trimmed,\r\n      schema: schema,\r\n      body_text: bodyText,\r\n      body_length: bodyText.length\r\n    };\r\n  } catch (e) {\r\n    const jsonStart = trimmed.indexOf('{\"schema\"');\r\n    if (jsonStart >= 0) {\r\n      try {\r\n        return tryParseR7SnapshotRaw(trimmed.slice(jsonStart));\r\n      } catch (e2) {\r\n        /* continue */\r\n      }\r\n    }\r\n    if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {\r\n      return {\r\n        ok: true,\r\n        reason: 'ready',\r\n        raw: trimmed,\r\n        schema: 'text/plain',\r\n        body_text: trimmed,\r\n        body_length: trimmed.length\r\n      };\r\n    }\r\n    return { ok: false, reason: 'invalid_json', raw: trimmed };\r\n  }\r\n}\r\nasync function readR7SnapshotOriginal(vfs, filePath) {\r\n  if (!vfs || !filePath || typeof vfs.readFile !== 'function') {\r\n    return { ok: false, reason: 'not_found', raw: '' };\r\n  }\r\n  const readAttempts = [\r\n    { source: 'original' },\r\n    {},\r\n    { source: 'parsed' }\r\n  ];\r\n  let lastRaw = '';\r\n  for (let i = 0; i < readAttempts.length; i++) {\r\n    const opts = readAttempts[i];\r\n    let raw = '';\r\n    try {\r\n      raw = await vfs.readFile(filePath, opts);\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n    if (typeof raw !== 'string' || !raw.trim()) continue;\r\n    lastRaw = raw;\r\n    const parsed = tryParseR7SnapshotRaw(raw);\r\n    if (parsed.ok) return parsed;\r\n  }\r\n  if (typeof vfs.getFileMetadata === 'function') {\r\n    try {\r\n      const meta = await vfs.getFileMetadata(filePath);\r\n      if (meta && typeof meta.content === 'string' && meta.content.trim()) {\r\n        const parsed = tryParseR7SnapshotRaw(meta.content);\r\n        if (parsed.ok) return parsed;\r\n        lastRaw = meta.content;\r\n      }\r\n    } catch (e) {\r\n      /* ignore */\r\n    }\r\n  }\r\n  if (lastRaw) {\r\n    const parsed = tryParseR7SnapshotRaw(lastRaw);\r\n    if (!parsed.ok) return parsed;\r\n    return parsed;\r\n  }\r\n  return { ok: false, reason: 'not_found', raw: '' };\r\n}\r\nasync function vfsSnapshotReady(vfs, filePath) {\r\n  const probe = await readR7SnapshotOriginal(vfs, filePath);\r\n  return {\r\n    ready: probe.ok === true,\r\n    reason: probe.ok ? 'ready' : probe.reason,\r\n    schema: probe.schema || '',\r\n    body_length: typeof probe.body_length === 'number' ? probe.body_length : 0\r\n  };\r\n}\r\nasync function vfsPathExists(vfs, filePath) {\r\n  const status = await vfsSnapshotReady(vfs, filePath);\r\n  return status.ready === true;\r\n}\r\nasync function scanR7SessionFiles(vfs) {\r\n  const dirsToScan = [r7SessionDir(), '/session'];\r\n  const seen = {};\r\n  const files = [];\r\n  if (!vfs || typeof vfs.listDir !== 'function') return files;\r\n\r\n  for (let d = 0; d < dirsToScan.length; d++) {\r\n    const dir = dirsToScan[d];\r\n    let entries = [];\r\n    try {\r\n      const raw = await vfs.listDir(dir);\r\n      entries = Array.isArray(raw) ? raw : [];\r\n    } catch (e) {\r\n      continue;\r\n    }\r\n\r\n    for (let i = 0; i < entries.length; i++) {\r\n      const entry = entries[i];\r\n      if (!entry || typeof entry !== 'object') continue;\r\n      const name = typeof entry.name === 'string' ? entry.name : '';\r\n      if (!name || name === '.' || name === '..') continue;\r\n      const isDir = entry.isDirectory === true || entry.type === 'directory';\r\n      if (isDir) continue;\r\n      if (!name.endsWith('.json')) continue;\r\n\r\n      const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;\r\n      if (seen[fullPath]) continue;\r\n      seen[fullPath] = true;\r\n\r\n      files.push({\r\n        name: name,\r\n        path: fullPath,\r\n        kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'\r\n      });\r\n    }\r\n  }\r\n\r\n  files.sort(function (a, b) {\r\n    return a.path.localeCompare(b.path, 'ru');\r\n  });\r\n  return files;\r\n}\n"
+    }
+  ]
+}

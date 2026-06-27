@@ -1,0 +1,93 @@
+{
+  "version": "1.1.0",
+  "description": "Методика декомпозиции крика души разработчика на инциденты и где искать совет.",
+  "incident_kinds": {
+    "bug": {
+      "title": "Загадочный баг",
+      "signals": ["не работает", "падает", "ошибка", "stack trace", "exception", "почему-то"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "bug.md",
+      "default_severity": "medium"
+    },
+    "legacy": {
+      "title": "Легаси без тестов",
+      "signals": ["легаси", "никто не знает", "старый код", "без тестов", "магия", "не трогать"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "legacy.md",
+      "default_severity": "high"
+    },
+    "deadline": {
+      "title": "Горящий дедлайн",
+      "signals": ["дедлайн", "вчера", "горит", "не успеваю", "релиз сегодня"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "deadline.md",
+      "default_severity": "high"
+    },
+    "impostor_syndrome": {
+      "title": "Синдром самозванца",
+      "signals": ["ничего не понимаю", "я тупой", "все умнее", "не разработчик", "случайно тут"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "impostor_syndrome.md",
+      "default_severity": "medium"
+    },
+    "meeting_overload": {
+      "title": "Перегруз встречами",
+      "signals": ["встречи", "созвоны", "нет времени кодить", "митинги", "календарь забит"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "meeting_overload.md",
+      "default_severity": "medium"
+    },
+    "merge_hell": {
+      "title": "Ад мержей и конфликтов",
+      "signals": ["конфликт", "merge", "rebase", "git", "перетёр", "потерял изменения"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "merge_hell.md",
+      "default_severity": "medium"
+    },
+    "flaky_tests": {
+      "title": "Флакающие тесты",
+      "signals": ["флапает", "тест падает рандомно", "то зелёный то красный", "flaky", "нестабильный тест", "CI краснеет"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "flaky_tests.md",
+      "default_severity": "medium"
+    },
+    "scope_creep": {
+      "title": "Расползание скоупа",
+      "signals": ["ещё одна фича", "требования меняются", "расползается", "добавьте ещё", "скоуп растёт", "бесконечные правки"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "scope_creep.md",
+      "default_severity": "high"
+    },
+    "code_review_hell": {
+      "title": "Ад код-ревью",
+      "signals": ["ревью", "никто не аппрувит", "придираются", "PR висит", "нит-пики", "approve"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "code_review_hell.md",
+      "default_severity": "medium"
+    },
+    "oncall_pager": {
+      "title": "Дежурство и пейджер",
+      "signals": ["дежурство", "пейджер", "алерт ночью", "on-call", "разбудили", "инцидент в проде ночью"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "oncall_pager.md",
+      "default_severity": "high"
+    },
+    "context_switching": {
+      "title": "Переключение контекста",
+      "signals": ["дёргают", "десять задач", "переключаюсь", "не дают сосредоточиться", "параллельно всё", "прерывают"],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "context_switching.md",
+      "default_severity": "medium"
+    },
+    "misc": {
+      "title": "Прочее страдание",
+      "signals": [],
+      "advice_prefix": "/workspace/advice",
+      "advice_file": "general.md",
+      "default_severity": "low"
+    }
+  },
+  "verdicts": ["survivable", "needs_break", "escalate", "needs_review"],
+  "severities": ["low", "medium", "high", "critical"],
+  "notes": "Если жалоба не ложится ни в один тип — заводи инцидент kind=misc. Тяжёлое выгорание эскалируй (verdict=escalate)."
+}

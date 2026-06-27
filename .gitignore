@@ -1,0 +1,24 @@
+# Secrets
+.env
+*.env.local
+
+# OS
+.DS_Store
+
+# Python / tooling artifacts
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Node
+node_modules/
+
+# ladcraft-skills-studio managed / transient
+# NB: root .pi/ is the shared canon and IS tracked; per-case .pi/ stay transient.
+.audit/
+.build/
+.from-server.json
+.remote-cache/
+.skill-backups/
