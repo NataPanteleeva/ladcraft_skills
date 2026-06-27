@@ -1,0 +1,7 @@
+{
+  "name": "compare-r7",
+  "private": true,
+  "dependencies": {
+    "yaml": "^2.8.0"
+  }
+}
