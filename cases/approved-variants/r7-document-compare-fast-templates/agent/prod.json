@@ -1,0 +1,15 @@
+{
+  "agentId": "wvccZ9WaZMDdCxfTyDGhh",
+  "title": "R7: сравнение документов",
+  "primaryWorkspaceId": "tyVwdNu1mcvzwo0uiwZLv",
+  "variantTag": "fast-templates",
+  "skillBindings": {
+    "r7-compare-toolkit": {
+      "catalogId": "TAJgJW37ybWIP5w7lmGzv",
+      "installedId": "rMT5ftorab_GDqYRyxO5M",
+      "version": "2.7.0"
+    }
+  },
+  "snapshottedAt": "2026-06-28T15:30:00.000Z",
+  "sourceCase": "cases/compare-r7"
+}

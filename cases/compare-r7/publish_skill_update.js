@@ -20,6 +20,18 @@ function mergeToolIds(payload, remoteTools) {
   return payload;
 }
 
+/** Runtime activate reads `detailed_description`, not bare `skill`. */
+function toApiPayload(raw) {
+  const body =
+    typeof raw.skill === "string" && raw.skill.includes("\n") ? raw.skill : raw.detailed_description || "";
+  return {
+    ...raw,
+    title: raw.title || raw.name,
+    detailed_description: body,
+    skill: body,
+  };
+}
+
 function main() {
   const skillAppId = process.argv[2];
   const payloadPath = path.resolve(process.argv[3]);
@@ -27,7 +39,7 @@ function main() {
     console.error("usage: node publish_skill_update.js <skillAppId> <payload.json>");
     process.exit(1);
   }
-  const payload = JSON.parse(fs.readFileSync(payloadPath, "utf8"));
+  const payload = toApiPayload(JSON.parse(fs.readFileSync(payloadPath, "utf8")));
   const remote = prod(`skill-get ${skillAppId}`);
   mergeToolIds(payload, remote.tools);
   const tmp = path.resolve(payloadPath + ".merged.json");

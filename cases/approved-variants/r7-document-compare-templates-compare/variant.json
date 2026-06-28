@@ -1,0 +1,59 @@
+{
+  "id": "r7-document-compare-templates-compare",
+  "title": "R7: сравнение документов — templates+compare",
+  "status": "approved",
+  "verifiedAt": "2026-06-28",
+  "tags": ["templates+compare", "r7", "compare", "ladcraft-r7", "bash-head"],
+  "sourceCase": "cases/compare-r7",
+  "sourceDocs": [
+    "cases/compare-r7/docs/approved-r7-document-compare.md",
+    "cases/compare-r7/docs/architecture-decisions.md"
+  ],
+  "prod": {
+    "agentId": "wvccZ9WaZMDdCxfTyDGhh",
+    "agentTitle": "R7: сравнение документов",
+    "primaryWorkspaceId": "tyVwdNu1mcvzwo0uiwZLv",
+    "skills": [
+      {
+        "slug": "r7-compare-toolkit",
+        "catalogId": "TAJgJW37ybWIP5w7lmGzv",
+        "installedId": "rMT5ftorab_GDqYRyxO5M",
+        "version": "7.0.0",
+        "tools": []
+      },
+      {
+        "slug": "r7-docx-render",
+        "note": "опционально на агенте для EXPORT docx",
+        "requiredFor": "export"
+      }
+    ]
+  },
+  "highlights": {
+    "start": "bash ls Templates + activate r7-compare-toolkit (2 tool); B не читать",
+    "compare": "2× bash head A+B параллельно; body.text из JSON; r7.task CompareReport",
+    "rejected": [
+      "load_compare_pair",
+      "prepare_compare",
+      "read_r7_snapshot_text",
+      "skill VFS на /session/r7/",
+      "python3 pipe на session"
+    ]
+  },
+  "referenceSessions": [
+    {
+      "note": "Скорость bash read — агент «Сравнение 27»",
+      "agentId": "s_eDSWr8EkRPfDsbgBJxa",
+      "sessionId": "sSq4sMISgdtM3RwQW9Hrm"
+    },
+    {
+      "note": "Антипример skill VFS TIMEOUT",
+      "agentId": "wvccZ9WaZMDdCxfTyDGhh",
+      "sessionId": "JGb4lRRCfRVxcjNpBj8yP"
+    }
+  ],
+  "supersedes": {
+    "comparePhase": "r7-document-compare-fast-templates",
+    "note": "fast-templates остаётся эталоном только для START bash ls"
+  },
+  "snapshottedAt": "2026-06-28T17:00:00.000Z"
+}

@@ -1,22 +1,15 @@
 ---
 name: r7-compare-toolkit
 description: >-
-  Инструментарий R7 для сравнения документов: поиск r7-snapshot в session VFS с retry,
-  список шаблонов workspace. Используй до doc-compare.
-version: 1.3.1
+  R7 compare-r7: bash head A+B на COMPARE, LLM-отчёт + r7.task. Read-tools не вызывать.
+version: 4.0.0
 tags:
   - document-compare
   - vfs
   - r7
 category: productivity
 mcp_spec:
-  tools:
-    - name: startup_compare
-    - name: resolve_r7_document
-    - name: list_session_files
-    - name: read_r7_snapshot_text
-    - name: compare_documents
-    - name: list_templates
+  tools: []
   default_capabilities:
     required:
       - type: vfs
@@ -56,43 +49,48 @@ general:
         function r7SessionDir() {
           return '/session/r7';
         }
-        function sessionPath(fileName) {
-          const name = typeof fileName === 'string' ? fileName.trim().replace(/^\/+/, '') : '';
-          if (!name) return '';
-          return '/session/' + name;
-        }
-        function sleepMs(ms) {
-          const n = typeof ms === 'number' && ms > 0 ? ms : 0;
-          if (!n) return Promise.resolve();
-          return new Promise(function (resolve) {
-            setTimeout(resolve, n);
-          });
-        }
-        function sanitizeR7DocKey(docKey) {
-          const raw = typeof docKey === 'string' ? docKey.trim() : '';
-          if (!raw) return '';
-          let s = raw.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');
-          s = s.replace(/^_+|_+$/g, '');
-          if (s.length > 80) s = s.slice(0, 80);
-          return s;
-        }
-        function r7SnapshotFileName(docKey) {
-          const s = sanitizeR7DocKey(docKey);
-          if (!s) return '';
-          return 'r7-' + s + '.json';
-        }
-        function r7SnapshotPathFromDocKey(docKey) {
-          const name = r7SnapshotFileName(docKey);
-          if (!name) return '';
-          return r7SessionDir() + '/' + name;
+        function sanitizeSnapshotBasename(name) {
+          let base = String(name || '').trim();
+          if (!base) return '';
+          base = base.replace(/^\/+/, '');
+          base = base.replace(/\s+\./g, '.');
+          base = base.replace(/\. json/gi, '.json');
+          base = base.replace(/\s+/g, '');
+          return base;
         }
         function normalizeSessionFilePath(pathValue) {
-          const raw = typeof pathValue === 'string' ? pathValue.trim() : '';
+          let raw = typeof pathValue === 'string' ? pathValue.trim() : '';
           if (!raw) return '';
-          if (raw.startsWith('/session/')) return raw;
-          if (raw.startsWith('~/session/')) return '/' + raw.slice(2);
-          if (raw.startsWith('session/')) return '/' + raw;
-          return sessionPath(raw.replace(/^\/+/, ''));
+          if (raw.startsWith('~/session/')) raw = '/' + raw.slice(2);
+          if (raw.startsWith('session/')) raw = '/' + raw;
+          let fileName = '';
+          if (raw.startsWith('/session/')) {
+            const parts = raw.split('/').filter(Boolean);
+            fileName = sanitizeSnapshotBasename(parts[parts.length - 1] || '');
+            if (!fileName) return '';
+            if (fileName.indexOf('r7-') === 0) {
+              return r7SessionDir() + '/' + fileName;
+            }
+            const dirPrefix = parts.length > 1 ? '/' + parts.slice(0, parts.length - 1).join('/') : '/session';
+            return dirPrefix + '/' + fileName;
+          }
+          fileName = sanitizeSnapshotBasename(raw.replace(/^\/+/, ''));
+          if (!fileName) return '';
+          if (fileName.indexOf('r7-') === 0) {
+            return r7SessionDir() + '/' + fileName;
+          }
+          return '/session/' + fileName;
+        }
+        function docKeyFromSessionFile(sessionFile) {
+          const norm = normalizeSessionFilePath(sessionFile);
+          if (!norm) return '';
+          const parts = norm.split('/');
+          const name = sanitizeSnapshotBasename(parts[parts.length - 1] || '');
+          if (name.indexOf('r7-') !== 0 || name.indexOf('.json') !== name.length - 5) return '';
+          const inner = name.slice(3, -5);
+          const sep = inner.indexOf('_');
+          if (sep <= 0) return '';
+          return inner.slice(0, sep) + ':' + inner.slice(sep + 1);
         }
         const R7_SNAPSHOT_SCHEMA = 'r7-snapshot/v1';
         const R7_MIN_BODY_CHARS = 1;
@@ -109,30 +107,6 @@ general:
               .join('\n\n');
           }
           return '';
-        }
-        function decodeBase64Utf8(encoded) {
-          try {
-            const compact = String(encoded || '').replace(/\s/g, '');
-            if (!compact) return '';
-            if (typeof Buffer !== 'undefined') {
-              return Buffer.from(compact, 'base64').toString('utf8');
-            }
-            const binary = atob(compact);
-            const out = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i += 1) {
-              out[i] = binary.charCodeAt(i);
-            }
-            return new TextDecoder('utf-8').decode(out);
-          } catch (e) {
-            return '';
-          }
-        }
-        function looksLikeBase64(value) {
-          const s = typeof value === 'string' ? value.trim() : '';
-          if (!s || s.length < 16) return false;
-          if (s.charAt(0) === '{' || s.charAt(0) === '[') return false;
-          const sample = s.replace(/\s/g, '').slice(0, 256);
-          return /^[A-Za-z0-9+/]+=*$/.test(sample);
         }
         function coerceVfsReadToString(raw) {
           if (typeof raw === 'string') return raw;
@@ -181,163 +155,223 @@ general:
                 /* continue */
               }
             }
-            if (looksLikeBase64(trimmed)) {
-              const decoded = decodeBase64Utf8(trimmed);
-              if (decoded) {
-                const inner = tryParseR7SnapshotRaw(decoded);
-                if (inner.ok) return inner;
-              }
-            }
-            if (trimmed.indexOf('{') !== 0 && trimmed.length >= R7_MIN_BODY_CHARS) {
-              return {
-                ok: true,
-                reason: 'ready',
-                raw: trimmed,
-                schema: 'text/plain',
-                body_text: trimmed,
-                body_length: trimmed.length
-              };
-            }
             return { ok: false, reason: 'invalid_json', raw: trimmed };
           }
+        }
+        async function vfsWithTimeout(promise, timeoutMs) {
+          const ms = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 3000;
+          try {
+            return await Promise.race([
+              promise,
+              new Promise(function (_, reject) {
+                setTimeout(function () {
+                  reject(new Error('vfs_timeout'));
+                }, ms);
+              })
+            ]);
+          } catch (e) {
+            return null;
+          }
+        }
+        async function vfsSnapshotStartupReady(vfs, filePath) {
+          if (!vfs || !filePath) {
+            return { ready: false, reason: 'not_found' };
+          }
+          if (typeof vfs.exists === 'function') {
+            const exists = await vfsWithTimeout(vfs.exists(filePath), 3000);
+            if (exists === true) {
+              return { ready: true, reason: 'ready' };
+            }
+          }
+          return { ready: false, reason: 'not_found' };
+        }
+        async function readR7SnapshotMetaFallback(vfs, filePath) {
+          if (!vfs || !filePath || typeof vfs.getFileMetadata !== 'function') {
+            return { ok: false, reason: 'not_found', raw: '' };
+          }
+          try {
+            const meta = await vfsWithTimeout(vfs.getFileMetadata(filePath), 5000);
+            if (!meta) {
+              return { ok: false, reason: 'vfs_timeout', raw: '' };
+            }
+            if (meta && typeof meta.content === 'string' && meta.content.trim()) {
+              return tryParseR7SnapshotRaw(meta.content);
+            }
+          } catch (e) {
+            /* ignore */
+          }
+          return { ok: false, reason: 'not_found', raw: '' };
         }
         async function readR7SnapshotOriginal(vfs, filePath) {
           if (!vfs || !filePath || typeof vfs.readFile !== 'function') {
             return { ok: false, reason: 'not_found', raw: '' };
           }
-          const readAttempts = [
-            { source: 'original' },
-            {},
-            { source: 'parsed' }
-          ];
-          let lastRaw = '';
-          for (let i = 0; i < readAttempts.length; i++) {
-            const opts = readAttempts[i];
-            let raw = '';
-            try {
-              raw = coerceVfsReadToString(await vfs.readFile(filePath, opts));
-            } catch (e) {
-              continue;
+          try {
+            const raw = coerceVfsReadToString(await vfs.readFile(filePath, {}));
+            if (raw && raw.trim()) {
+              const parsed = tryParseR7SnapshotRaw(raw);
+              if (parsed.ok) return parsed;
             }
-            if (typeof raw !== 'string' || !raw.trim()) continue;
-            lastRaw = raw;
-            const parsed = tryParseR7SnapshotRaw(raw);
-            if (parsed.ok) return parsed;
+          } catch (e) {
+            /* ignore */
           }
-          if (typeof vfs.getFileMetadata === 'function') {
-            try {
-              const meta = await vfs.getFileMetadata(filePath);
-              if (meta && typeof meta.content === 'string' && meta.content.trim()) {
-                const parsed = tryParseR7SnapshotRaw(meta.content);
-                if (parsed.ok) return parsed;
-                lastRaw = meta.content;
-              }
-            } catch (e) {
-              /* ignore */
-            }
-          }
-          if (lastRaw) {
-            const parsed = tryParseR7SnapshotRaw(lastRaw);
-            if (!parsed.ok) return parsed;
-            return parsed;
-          }
-          return { ok: false, reason: 'not_found', raw: '' };
+          return readR7SnapshotMetaFallback(vfs, filePath);
         }
-        async function vfsSnapshotReady(vfs, filePath) {
-          const probe = await readR7SnapshotOriginal(vfs, filePath);
-          return {
-            ready: probe.ok === true,
-            reason: probe.ok ? 'ready' : probe.reason,
-            schema: probe.schema || '',
-            body_length: typeof probe.body_length === 'number' ? probe.body_length : 0
-          };
-        }
-        async function vfsPathExists(vfs, filePath) {
-          const status = await vfsSnapshotReady(vfs, filePath);
-          return status.ready === true;
-        }
-        async function scanR7SessionFiles(vfs) {
-          const dirsToScan = [r7SessionDir(), '/session'];
-          const seen = {};
-          const files = [];
-          if (!vfs || typeof vfs.listDir !== 'function') return files;
-
-          for (let d = 0; d < dirsToScan.length; d++) {
-            const dir = dirsToScan[d];
-            let entries = [];
-            try {
-              const raw = await vfs.listDir(dir);
-              entries = Array.isArray(raw) ? raw : [];
-            } catch (e) {
-              continue;
-            }
-
-            for (let i = 0; i < entries.length; i++) {
-              const entry = entries[i];
-              if (!entry || typeof entry !== 'object') continue;
-              const name = typeof entry.name === 'string' ? entry.name : '';
-              if (!name || name === '.' || name === '..') continue;
-              const isDir = entry.isDirectory === true || entry.type === 'directory';
-              if (isDir) continue;
-              if (!name.endsWith('.json')) continue;
-
-              const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name;
-              if (seen[fullPath]) continue;
-              seen[fullPath] = true;
-
-              files.push({
-                name: name,
-                path: fullPath,
-                kind: name.indexOf('r7-') === 0 ? 'r7_snapshot' : 'session_file'
-              });
-            }
+        async function readR7SnapshotWithTimeout(vfs, filePath, timeoutMs) {
+          const ms = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 20000;
+          if (!vfs || !filePath) {
+            return { ok: false, reason: 'not_found', raw: '' };
           }
-
-          files.sort(function (a, b) {
-            return a.path.localeCompare(b.path, 'ru');
+          const metaProbe = await readR7SnapshotMetaFallback(vfs, filePath);
+          if (metaProbe.ok) return metaProbe;
+          try {
+            const probe = await Promise.race([
+              readR7SnapshotOriginal(vfs, filePath),
+              new Promise(function (_, reject) {
+                setTimeout(function () {
+                  reject(new Error('vfs_read_timeout'));
+                }, ms);
+              })
+            ]);
+            if (probe && probe.ok) return probe;
+            return probe && probe.reason ? probe : { ok: false, reason: 'not_found', raw: '' };
+          } catch (e) {
+            if (String(e && e.message ? e.message : e) === 'vfs_read_timeout') {
+              return { ok: false, reason: 'vfs_timeout', raw: '' };
+            }
+            return { ok: false, reason: 'not_found', raw: '' };
+          }
+        }
+        async function readR7SnapshotFast(vfs, filePath, timeoutMs) {
+          const ms = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 8000;
+          if (!vfs || !filePath) {
+            return { ok: false, reason: 'not_found', raw: '' };
+          }
+          const metaProbe = await readR7SnapshotMetaFallback(vfs, filePath);
+          if (metaProbe.ok) return metaProbe;
+          try {
+            const probe = await Promise.race([
+              readR7SnapshotOriginal(vfs, filePath),
+              new Promise(function (_, reject) {
+                setTimeout(function () {
+                  reject(new Error('vfs_read_timeout'));
+                }, ms);
+              })
+            ]);
+            if (probe && probe.ok) return probe;
+            return probe && probe.reason ? probe : { ok: false, reason: 'not_found', raw: '' };
+          } catch (e) {
+            if (String(e && e.message ? e.message : e) === 'vfs_read_timeout') {
+              return { ok: false, reason: 'vfs_timeout', raw: '' };
+            }
+            return { ok: false, reason: 'not_found', raw: '' };
+          }
+        }
+        async function listWorkspaceTemplates(vfs) {
+          const dir = templatesDir();
+          if (!vfs || typeof vfs.listDir !== 'function') return [];
+          let entries = [];
+          try {
+            const raw = await vfsWithTimeout(vfs.listDir(dir), 2500);
+            if (!raw) return [];
+            entries = Array.isArray(raw) ? raw : [];
+          } catch (e) {
+            return [];
+          }
+          const templates = [];
+          for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (!entry || typeof entry !== 'object') continue;
+            const name = typeof entry.name === 'string' ? entry.name : '';
+            if (!name || name === '.' || name === '..') continue;
+            const isDir = entry.isDirectory === true || entry.type === 'directory';
+            if (isDir) continue;
+            templates.push({ name: name, path: dir + '/' + name });
+          }
+          templates.sort(function (a, b) {
+            return a.name.localeCompare(b.name, 'ru');
           });
-          return files;
+          return templates;
+        }
+        async function readTemplateText(vfs, templateName, maxChars) {
+          const rawName = String(templateName || '').trim();
+          if (!rawName) {
+            return { ok: false, error: 'template_name обязателен' };
+          }
+          const baseName = rawName.toLowerCase().endsWith('.md') ? rawName : rawName + '.md';
+          const templatePath = templatesDir() + '/' + baseName;
+          const limit = typeof maxChars === 'number' && maxChars > 0 ? maxChars : 150000;
+          if (!vfs || typeof vfs.readFile !== 'function') {
+            return { ok: false, error: 'VFS readFile недоступен', path: templatePath };
+          }
+          try {
+            const raw = coerceVfsReadToString(await vfs.readFile(templatePath, {}));
+            if (!raw || !raw.trim()) {
+              return { ok: false, error: 'Шаблон пуст или не найден', path: templatePath };
+            }
+            return {
+              ok: true,
+              name: baseName,
+              path: templatePath,
+              text: raw.slice(0, limit),
+              truncated: raw.length > limit
+            };
+          } catch (err) {
+            return {
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+              path: templatePath
+            };
+          }
         }
 ---
 
-Навык инфраструктуры для сценария **R7 doc-compare**.
+## Справочник (канон кейса)
 
-## Когда вызывать
+Перед правкой агента или `r7-compare-toolkit` читай: **[`docs/approved-r7-document-compare.md`](../docs/approved-r7-document-compare.md)** — одобренный START (bash-список шаблонов) и COMPARE.
 
-| Этап | Tool |
-|------|------|
-| **Первое сообщение** | **`startup_compare`** — один вызов, готовый `greeting_markdown` |
-| **Сравнение (шаблон выбран)** | **doc-compare** (LLM): bash A + `read_r7_snapshot_text` |
-| **Чтение B** | **`read_r7_snapshot_text`** |
-| Диагностика | `list_session_files`, `resolve_r7_document`, `list_templates` |
-| ~~compare_documents~~ | **не использовать** — эвристика, даёт ложные срабатывания на ТТ |
+## START
 
-**Имена tools — буквально:** `list_templates` (не `list_emplates`, не `list templates`).
+Список шаблонов на START даёт **агент через bash** (`ls -la /workspace/Templates/`), не этот навык.
 
-## startup_compare (старт сессии)
+**2 tool параллельно** (иначе R7 обрывает run):
+1. `bash` → `ls -la /workspace/Templates/`
+2. `skills activate r7-compare-toolkit`
 
-**Не читай snapshot перед вызовом** — достаточно path из `mentioned.files`.
+Таблица в ответе: `| № | Название шаблона | Размер |`. Сохрани `session_file` из `mentioned.files`.
 
-```
-startup_compare({ "session_file": "/session/r7/r7-word_….json" })
-```
+Запрещено на START: `startup_compare`; find; cat; python; doc-compare; повторный ls.
 
-`doc_key` опционален (выводится из имени файла `r7-word_ID.json` → `word:ID`).
+## COMPARE
 
-Ответ: `greeting_markdown` — **выведи в чат дословно один раз**. Сохрани `session_file`.
+Шаблон **уже выбран** — **не** показывай список шаблонов, **не** `ls` Templates.
 
-Сравнение — навык **doc-compare** (смысловое, LLM). Выгрузка DOCX — **r7-docx-render**.
-
-## compare_documents (НЕ использовать)
-
-Эвристический diff для ТТ даёт сотни ложных расхождений. **На compare-агенте не вызывай.** Сравнение — только через **doc-compare**.
-
-## read_r7_snapshot_text
-
-Единственный надёжный способ прочитать snapshot из `/session/r7/` (bash-mount может отдавать пустой файл).
+**1 batch — 2 bash параллельно**, затем **сразу** финальный ответ (**без** дополнительных tool):
 
 ```
-read_r7_snapshot_text({ "session_file": "/session/r7/r7-word_….json", "limit_chars": 80000 })
+head -c 150000 "/workspace/Templates/{шаблон}.md"
+head -c 200000 "<session_file из mentioned.files>"
 ```
 
-Ответ: `text` (body.text, усечённый), `schema`, `session_file`. При `ok: false` — `reason`: `not_found` | `empty_body` | `bad_schema` | `invalid_json`.
+Альтернатива A: `cat "/workspace/Templates/{шаблон}.md" | head -c 150000`
+
+Из вывода B извлеки **`body.text`** из JSON (`r7-snapshot/v1`). Не вызывай load_compare_pair, prepare_compare, python3, pipe cat|python.
+
+При обрезке — укажи в отчёте disclaimer (анализ по доступной части).
+
+По текстам A и B — LLM-сравнение по смыслу. Игнорируй сдвиги нумерации и колонку «наличие». Типы: ⚠️ критичное, 📝 опечатка, Δ отличие.
+
+**Выход в чат:** резюме + таблица до **10** критичных строк + «**Расхождений: N**» (N = полное число).
+Если критичных больше 10 — «… и ещё K (полный список в CompareReport)».
+
+**CompareReport** (`sections` — все расхождения) — в блоке `r7.task` (не `json`):
+
+```r7.task
+[{"type":"deliver_inline","data":{"fileName":"compare-report.json","mimeType":"application/json","encoding":"utf8","content":"<CompareReport одной строкой>","actions":[]}}]
+```
+
+CompareReport: `schema: doc-compare/v1`, `chatMarkdown` = видимый markdown.
+
+## EXPORT
+
+docx — `r7_render_and_deliver_docx` (report из r7.task).

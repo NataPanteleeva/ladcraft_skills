@@ -1,0 +1,35 @@
+{
+  "id": "r7-document-compare-fast-templates",
+  "title": "R7: сравнение документов — fast templates",
+  "status": "superseded",
+  "supersededBy": "r7-document-compare-templates-compare",
+  "verifiedAt": "2026-06-28",
+  "tags": ["fast-templates", "r7", "compare", "ladcraft-r7"],
+  "sourceCase": "cases/compare-r7",
+  "sourceDocs": [
+    "cases/compare-r7/docs/approved-r7-document-compare.md"
+  ],
+  "prod": {
+    "agentId": "wvccZ9WaZMDdCxfTyDGhh",
+    "agentTitle": "R7: сравнение документов",
+    "primaryWorkspaceId": "tyVwdNu1mcvzwo0uiwZLv",
+    "skills": [
+      {
+        "slug": "r7-compare-toolkit",
+        "catalogId": "TAJgJW37ybWIP5w7lmGzv",
+        "installedId": "rMT5ftorab_GDqYRyxO5M",
+        "version": "2.7.0"
+      }
+    ]
+  },
+  "highlights": {
+    "fastTemplates": "bash ls -la /workspace/Templates/ на START вместо startup_compare / VFS listDir",
+    "compare": "prepare_compare после выбора шаблона; без повторного ls Templates",
+    "rejected": ["startup_compare на START", "list_active", "VFS listDir для списка шаблонов", "повторный список шаблонов на COMPARE"]
+  },
+  "referenceAgent": {
+    "note": "Эталон скорости START — агент «Сравнение 27» (s_eDSWr8EkRPfDsbgBJxa), взят только механизм bash ls",
+    "agentId": "s_eDSWr8EkRPfDsbgBJxa"
+  },
+  "snapshottedAt": "2026-06-28T15:30:00.000Z"
+}

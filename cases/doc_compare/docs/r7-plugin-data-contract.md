@@ -114,28 +114,32 @@ R7: word:7b6db4c8d218664ebb84::agent:mwCvjRF
 
 ## Как агенту читать данные
 
-### Документ B (session)
+### Документ B (session) — compare-r7 (prod)
+
+| Способ | Команда | Когда |
+|--------|---------|--------|
+| **Основной** | host `bash` → `head -c 200000 "<session_file>"` | COMPARE; из JSON извлечь `body.text` |
+| Skill VFS | `read_r7_snapshot_text` / `load_compare_pair` | **Не использовать** — зависания ~600 с |
+| python pipe | `cat \| python3` на session | **Запрещён** sandbox |
+
+Канон: [`approved-r7-document-compare.md`](../../compare-r7/docs/approved-r7-document-compare.md).
+
+### Документ B (session) — legacy doc_compare
 
 | Способ | Команда / tool | Когда |
-|--------|----------------|-------|
-| **Основной** | skill **`read_r7_snapshot_text({ session_file, limit_chars? })`** | Чтение `body.text` после выбора шаблона |
-| Поиск + retry | skill **`resolve_r7_document`** / **`startup_compare`** | Старт; `found: true` только при `schema` + непустой `body.text` |
-| Диагностика | skill **`list_session_files`** | Скан `/session/r7/` с полем `ready` |
-| Host bash | `head` / `python open()` на `/session/r7/` | **Не использовать** — bash-mount может отдавать пустой файл при ненулевом size |
-
-**Не использовать** для чтения B:
-- `bash head` / `python3 open()` на `/session/r7/…` как основной путь;
-- одиночный `bash ls` без retry и без `resolve_r7_document`;
-- вывод «документ не найден» до исчерпания retry (~6 с).
-
-Успех чтения B: `read_r7_snapshot_text` → `ok: true` и непустой `text`.
+|--------|----------------|--------|
+| Skill | **`read_r7_snapshot_text`** | Legacy `doc_compare_toolkit` |
+| Retry | **`resolve_r7_document`** / **`startup_compare`** | Legacy старт |
 
 ### Шаблон A (workspace)
 
-| Способ | Команда |
-|--------|---------|
-| Host bash | `head -c 200000 "/workspace/Templates/{имя}.md"` |
-| Skill VFS | `list_templates`, `readFile` на `/workspace/Templates/…` |
+| Способ | Команда | Когда |
+|--------|---------|--------|
+| **Список на START** | `bash` → `ls -la /workspace/Templates/` | compare-r7 START |
+| **Чтение COMPARE** | `head -c 150000 "/workspace/Templates/{имя}.md"` | compare-r7 |
+| Альтернатива A | `cat "…" \| head -c 150000` | пробелы в имени |
+
+**Не использовать на START:** skill VFS `listDir`, `startup_compare`, `list_templates` для списка шаблонов — в R7 ненадёжно.
 
 ---
 
@@ -170,9 +174,9 @@ create session
 
 ### Instruction (агент)
 
-1. Первый tool: `startup_compare` или `resolve_r7_document` (`doc_key` из title, `session_file` из `mentioned.files`).
-2. После выбора шаблона: **`read_r7_snapshot_text`** по `session_file` (не bash на `/session/r7/`).
-3. Шаблоны: `list_templates` + `bash head` на `/workspace/Templates/…`.
+1. **Список шаблонов (START):** bash `ls -la /workspace/Templates/` + таблица в чате — канон [`cases/compare-r7/docs/approved-r7-document-compare.md`](../../compare-r7/docs/approved-r7-document-compare.md).
+2. После выбора шаблона: **`read_r7_snapshot_text`** / **`prepare_compare`** по `session_file` (не bash на `/session/r7/`).
+3. **Не** повторять список шаблонов на COMPARE.
 4. Не показывать chain-of-thought; не упоминать демо/заготовки (если сценарий это запрещает).
 5. Вставка в Word: не писать в JSON snapshot — `r7-export` / задачи плагина.
 
@@ -214,10 +218,12 @@ node .cursor/skills/ladcraft-agent-drive/scripts/lc_agent_drive.js \
 
 | Путь | Содержание |
 |------|------------|
+| `cases/compare-r7/docs/approved-r7-document-compare.md` | **Одобренный** START: bash-список шаблонов + COMPARE без повтора |
 | `cases/doc_compare/doc_compare_toolkit/` | Навык с `resolve_r7_document` |
 | `cases/doc_compare/doc_compare_agent/instruction.md` | Инструкция агента сравнения |
+| `cases/compare-r7/` | R7 compare-r7: агент + `r7-compare-toolkit` |
 | `.cursor/rules/ladcraft-r7-plugin-transfer.mdc` | Краткое правило для Cursor-агента |
 
 ---
 
-*Обновлено: 2026-06-26 — чтение B через `read_r7_snapshot_text`, не bash на `/session/r7/`.*
+*Обновлено: 2026-06-28 — список шаблонов на START: bash `ls` (канон compare-r7); чтение B через skill.*

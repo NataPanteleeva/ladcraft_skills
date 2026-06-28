@@ -1,0 +1,29 @@
+---
+description: Кейс compare-r7 — сравнение документа R7 с шаблоном Templates. Читать перед правкой агента, r7-compare-toolkit, smoke или публикацией на prod.
+alwaysApply: false
+---
+
+# compare-r7 (R7 document compare)
+
+## Обязательное чтение (порядок)
+
+1. [`cases/compare-r7/docs/approved-r7-document-compare.md`](../../cases/compare-r7/docs/approved-r7-document-compare.md) — алгоритм START / COMPARE / EXPORT
+2. [`cases/compare-r7/docs/architecture-decisions.md`](../../cases/compare-r7/docs/architecture-decisions.md) — почему bash-first, отвергнутые варианты
+3. [`cases/compare-r7/agent/instruction`](../../cases/compare-r7/agent/instruction) — prod instruction
+4. [`cases/compare-r7/skills/r7-compare-toolkit/SKILL.md`](../../cases/compare-r7/skills/r7-compare-toolkit/SKILL.md) — промпт навыка (instruction-only)
+
+## Принятое решение
+
+| Фаза | Механизм |
+|------|----------|
+| START | `bash ls` + `activate r7-compare-toolkit` (2 tool параллельно) |
+| COMPARE read | **2× `bash head`** A+B; B → `body.text` из JSON |
+| COMPARE output | LLM + **`r7.task`** CompareReport `doc-compare/v1` |
+
+**Не на COMPARE:** `load_compare_pair`, skill VFS `/session/r7/`, `python3` pipe.
+
+Референс скорости: «Сравнение 27» (`s_eDSWr8EkRPfDsbgBJxa`).
+
+## Prod ids
+
+Агент `wvccZ9WaZMDdCxfTyDGhh`, навык `TAJgJW37ybWIP5w7lmGzv` — [`cases/compare-r7/README.md`](../../cases/compare-r7/README.md).

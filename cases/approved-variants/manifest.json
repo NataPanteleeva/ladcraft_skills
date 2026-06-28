@@ -1,0 +1,31 @@
+{
+  "schema": "approved-variants/v1",
+  "updatedAt": "2026-06-28",
+  "variants": [
+    {
+      "id": "r7-document-compare-templates-compare",
+      "title": "R7: сравнение документов — templates+compare",
+      "status": "approved",
+      "verifiedAt": "2026-06-28",
+      "tags": ["templates+compare", "r7", "compare", "ladcraft-r7", "bash-head"],
+      "sourceCase": "cases/compare-r7",
+      "path": "r7-document-compare-templates-compare",
+      "prodAgentId": "wvccZ9WaZMDdCxfTyDGhh",
+      "skillBindings": ["r7-compare-toolkit", "r7-docx-render"],
+      "summary": "Рабочий вариант: bash ls Templates на START; COMPARE через 2× bash head (A+B) + r7.task CompareReport; skill instruction-only v7."
+    },
+    {
+      "id": "r7-document-compare-fast-templates",
+      "title": "R7: сравнение документов — fast templates",
+      "status": "superseded",
+      "supersededBy": "r7-document-compare-templates-compare",
+      "verifiedAt": "2026-06-28",
+      "tags": ["fast-templates", "r7", "compare", "ladcraft-r7"],
+      "sourceCase": "cases/compare-r7",
+      "path": "r7-document-compare-fast-templates",
+      "prodAgentId": "wvccZ9WaZMDdCxfTyDGhh",
+      "skillBindings": ["r7-compare-toolkit"],
+      "summary": "Исторический снимок START (bash ls). COMPARE заменён на templates+compare."
+    }
+  ]
+}

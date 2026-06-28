@@ -1,0 +1,19 @@
+{
+  "agentId": "wvccZ9WaZMDdCxfTyDGhh",
+  "title": "R7: сравнение документов",
+  "primaryWorkspaceId": "tyVwdNu1mcvzwo0uiwZLv",
+  "variantTag": "templates+compare",
+  "skillBindings": {
+    "r7-compare-toolkit": {
+      "catalogId": "TAJgJW37ybWIP5w7lmGzv",
+      "installedId": "rMT5ftorab_GDqYRyxO5M",
+      "version": "7.0.0",
+      "tools": []
+    },
+    "r7-docx-render": {
+      "note": "bind for EXPORT docx when needed"
+    }
+  },
+  "snapshottedAt": "2026-06-28T17:00:00.000Z",
+  "sourceCase": "cases/compare-r7"
+}

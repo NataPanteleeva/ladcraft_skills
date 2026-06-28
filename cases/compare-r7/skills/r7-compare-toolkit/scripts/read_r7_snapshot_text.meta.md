@@ -46,7 +46,7 @@ schemas:
 resources:
   cpu: 0.2
   memory: 256
-  timeout: 120
+  timeout: 35
   network:
     hosts: []
 ---

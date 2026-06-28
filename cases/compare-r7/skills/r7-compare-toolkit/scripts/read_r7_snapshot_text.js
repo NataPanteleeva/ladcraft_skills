@@ -25,7 +25,7 @@ async function handler(state, params) {
   if (!limitChars || limitChars < 1) limitChars = 80000;
   if (limitChars > 300000) limitChars = 300000;
 
-  const probe = await readR7SnapshotOriginal(vfs, sessionFile);
+  const probe = await readR7SnapshotWithTimeout(vfs, sessionFile, 25000);
   if (!probe.ok) {
     return {
       ok: false,
