@@ -113,9 +113,65 @@ function buildTableHtml(lines: string[]): string {
 }
 
 function inlineFormat(safeHtml: string): string {
-  return safeHtml
+  let out = safeHtml;
+  out = out.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+    (_match, label, url) => linkHtml(url, label),
+  );
+  out = autolinkBareUrls(out);
+  out = out
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  return out;
+}
+
+function autolinkBareUrls(text: string): string {
+  const re = /https?:\/\/[^\s<"]+/g;
+  let result = "";
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    const start = match.index;
+    const url = match[0];
+    const before = text.slice(0, start);
+
+    if (isInsideAnchor(before, text.slice(start))) {
+      result += text.slice(lastIndex, start + url.length);
+      lastIndex = start + url.length;
+      continue;
+    }
+    if (/"https?:\/\/[^"]*$/.test(before.slice(-200))) {
+      result += text.slice(lastIndex, start + url.length);
+      lastIndex = start + url.length;
+      continue;
+    }
+
+    result += text.slice(lastIndex, start);
+    result += linkHtml(url, url);
+    lastIndex = start + url.length;
+  }
+
+  return result + text.slice(lastIndex);
+}
+
+function isInsideAnchor(before: string, after: string): boolean {
+  const lastOpen = before.lastIndexOf("<a ");
+  const lastClose = before.lastIndexOf("</a>");
+  if (lastOpen <= lastClose) return false;
+  return !after.includes("</a>");
+}
+
+function linkHtml(url: string, label: string): string {
+  const safeUrl = escapeAttr(url);
+  return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="deliver-link">${label}</a>`;
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 function escapeHtml(s: string): string {

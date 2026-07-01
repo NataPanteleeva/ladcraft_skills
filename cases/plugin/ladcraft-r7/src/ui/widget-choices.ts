@@ -1,8 +1,8 @@
 import type { HistoryMessage } from "../eai/session";
-import { getMessageFullText } from "../utils/message-text";
+import { extractVisibleText } from "../eai/session";
 import { extractWidgetPayload } from "../eai/widget";
 
-const MD_FILE = /([^\s/\\|]+\.md)/gi;
+const TEMPLATE_FILE = /([^\s/\\|]+\.(?:md|docx))/gi;
 
 /** Parse radio / option labels from Ladcraft widget HTML. */
 export function extractChoicesFromWidgetHtml(html: string): string[] {
@@ -69,15 +69,18 @@ export function extractChoicesFromText(text: string): string[] {
     if (line.length >= 2 && line.length <= 120) choices.add(line);
   }
 
-  for (const match of text.matchAll(MD_FILE)) {
+  for (const match of text.matchAll(TEMPLATE_FILE)) {
     const name = match[1].trim();
     if (name.length >= 4) choices.add(name);
   }
 
-  for (const match of text.matchAll(/\|\s*шаблон\s*\|[^\n]*\n\|[-\s|]+\|\n([\s\S]*?)(?:\n\n|\n#|\n---|$)/i)) {
+  for (const match of text.matchAll(/\|[^\n]*шаблон[^\n]*\|\s*\n\|[-\s|]+\|\s*\n([\s\S]*?)(?:\n\n|\n#|\n---|$)/gi)) {
     for (const row of match[1].split("\n")) {
-      const cell = row.split("|").map((c) => c.trim()).filter(Boolean)[0];
-      if (cell && !/^[-—]+$/.test(cell)) choices.add(cell);
+      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+      for (const cell of cells) {
+        const file = cell.match(/^([^\s/\\|]+\.(?:md|docx))$/i)?.[1];
+        if (file) choices.add(file);
+      }
     }
   }
 
@@ -112,7 +115,8 @@ export function extractWidgetChoices(
   for (let i = 0; i <= index; i++) {
     const item = items[i];
     if (item.role === "assistant") {
-      contextParts.push(getMessageFullText(item));
+      const visible = extractVisibleText(item).trim();
+      if (visible) contextParts.push(visible);
     }
   }
   const fromText = extractChoicesFromText(contextParts.join("\n\n"));

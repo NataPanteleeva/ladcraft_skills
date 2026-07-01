@@ -1,0 +1,80 @@
+{
+  "sourceAgent": {
+    "agentId": "t6WgR4z7hVJypzAXuyT2p",
+    "title": "для плагина",
+    "primaryWorkspaceId": "GYJlwYFsRHEp6Z4nJvRPA",
+    "instructionAtSnapshot": "Ты - агент по редактированию и обработке документов и таблиц в р7-офис.",
+    "legacyAllowedAppIds": [
+      "d_1QV9URwYhGIAUd3YGQ2",
+      "o3V7iCb8ZnH39_wg3wOt1",
+      "oly7x_EwDbF1eR9bHbMMI",
+      "D82mOu2U7cV0VkhNeTIdM",
+      "WvElv8xCf7PzwAXTdhR85",
+      "TwpIioz9NTiVnKXRrayWO",
+      "C0EPKaQz972VHB5XnhhUt"
+    ]
+  },
+  "newAgent": {
+    "title": "R7 doc handler (плагин)",
+    "instructionFile": "instruction",
+    "skillCatalog": "skill-catalog.json",
+    "skillsRoot": "skills",
+    "agentId": "3pESmwY2EK_EYFwj7TYDS",
+    "primaryWorkspaceId": "5SIpqWAgpeV_uhGYkfs_F",
+    "modelId": "4ohPFvIN0OJ48pZUR2wFk",
+    "skillBindings": {
+      "r7-analyze": {
+        "app_id": "Rw6WMKTxYE1m5UB5WEd5Q",
+        "installed_application_id": "o3V7iCb8ZnH39_wg3wOt1",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-chat": {
+        "app_id": "p6EA8UxwLmprXmaRtfPTE",
+        "installed_application_id": "D82mOu2U7cV0VkhNeTIdM",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-rewrite": {
+        "app_id": "Jsc76gvtqLXotgt30trwS",
+        "installed_application_id": "TwpIioz9NTiVnKXRrayWO",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-search-replace": {
+        "app_id": "i0FgTj8y5k_hEZCJhxYsg",
+        "installed_application_id": "C0EPKaQz972VHB5XnhhUt",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-proofread": {
+        "app_id": "kQ65hjeuzx9NcZV_O_PPL",
+        "installed_application_id": "WvElv8xCf7PzwAXTdhR85",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-add-comment": {
+        "app_id": "aRjAo8z_RVbqyIoyfo3Ml",
+        "installed_application_id": "d_1QV9URwYhGIAUd3YGQ2",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-cell": {
+        "app_id": "iU17ydVRotYM7NU8mDXZR",
+        "installed_application_id": "oly7x_EwDbF1eR9bHbMMI",
+        "version": "2.0.0",
+        "tools": []
+      },
+      "r7-export": {
+        "app_id": "TKdUjQpkz9OLC6q5zh4IB",
+        "installed_application_id": "QUHXO0aUUPRZJEZ9FYAmK",
+        "version": "1.0.0",
+        "tools": [
+          "r7_deliver_docx"
+        ]
+      }
+    },
+    "publishedAt": "2026-06-30T08:27:59.026Z"
+  },
+  "notes": "После publish навыков из skills/ заполнить skill-catalog.json prod id и agent-bind. Референс бага: agent-chat-history-R7-word-4B8BBCE…2026-06-30 — чтение /workspace/r7/ вместо mentioned.files."
+}

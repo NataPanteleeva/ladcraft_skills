@@ -10,6 +10,50 @@
 </head>
 <body>
   <div id="app"></div>
+  <script>
+    (function () {
+      var KEY = "ladcraft_r7_disk_doc_id";
+      function pickId(href) {
+        if (!href) return null;
+        var patterns = [
+          /[?&#](?:id|fileid|file_id|docid|doc_id|documentid|document_id)=(\d+)/i,
+          /\/docs\/(\d+)(?:[/?#]|$)/i,
+          /\/documents\/(\d+)(?:[/?#]|$)/i,
+          /Documents\/Download[^?#]*[?&]id=(\d+)/i
+        ];
+        for (var i = 0; i < patterns.length; i += 1) {
+          var m = href.match(patterns[i]);
+          if (m) return m[1];
+        }
+        return null;
+      }
+      function tryCapture(win) {
+        try {
+          var id = pickId(win.location && win.location.href);
+          if (id) sessionStorage.setItem(KEY, id);
+        } catch (e) {}
+      }
+      tryCapture(window);
+      try {
+        tryCapture(window.top);
+      } catch (e) {}
+      try {
+        var refId = pickId(document.referrer || "");
+        if (refId) sessionStorage.setItem(KEY, refId);
+      } catch (e) {}
+      var frame = window;
+      for (var i = 0; i < 12 && frame; i += 1) {
+        tryCapture(frame);
+        try {
+          var parent = frame.parent;
+          if (!parent || parent === frame) break;
+          frame = parent;
+        } catch (e) {
+          break;
+        }
+      }
+    })();
+  </script>
   <script src="dist/app.js"></script>
 </body>
 </html>

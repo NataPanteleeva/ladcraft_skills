@@ -14,3 +14,16 @@ export function getMessageFullText(message: HistoryMessage): string {
   }
   return parts.join("\n");
 }
+
+const R7_FENCED_SUPPLEMENT_RE =
+  /\n*---\s*\n\[Контекст R7:[^\]]*\][\s\S]*?\n---/g;
+
+const R7_DISK_SUPPLEMENT_RE = /\n*\[Контекст R7: диск\][\s\S]*$/;
+
+/** Strip R7 API supplements from user message text for chat bubble display. */
+export function stripUserMessageSupplements(text: string): string {
+  let out = text.trim();
+  out = out.replace(R7_FENCED_SUPPLEMENT_RE, "");
+  out = out.replace(R7_DISK_SUPPLEMENT_RE, "");
+  return out.trim();
+}

@@ -1,0 +1,12 @@
+{
+  "skill": "r7-add-comment",
+  "title": "r7-add-comment",
+  "name": "r7-add-comment",
+  "description": "Добавляет комментарий рецензента в Word через r7.task type add_comment. Используй при запросе оставить комментарий, замечание или рецензию; hint r7-add-comment для плагина EAI R7.",
+  "detailed_description": "Добавь комментарий рецензента к открытому документу Word по запросу пользователя.\r\nВерни r7.task type \"add_comment\" с текстом комментария.\r\n\r\n```r7.task\r\n[{ \"type\": \"add_comment\", \"data\": { \"text\": \"...\" } }]\r\n```\r\n\r\n## Правила\r\n\r\n- Только Word; в Cell используй навык `r7-cell-comment`.\r\n- Один комментарий за ответ, если пользователь не просит несколько.\r\n- Текст комментария — конкретный, привязанный к контексту документа или выделения.\r\n- Не описывай API редактора.",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.0.0",
+  "tools": []
+}

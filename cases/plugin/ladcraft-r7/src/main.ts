@@ -1,4 +1,4 @@
-import { buildDocKey, getConfig, saveConfig, type EditorType } from "./config";
+import { buildDocKey, getConfig, resolveTransferProfile, saveConfig, usesDiskRef, usesVfsSnapshot, type EditorType } from "./config";
 import {
   ensureDocumentContext,
   isContextBoundToDocument,
@@ -6,6 +6,8 @@ import {
   type DocumentContextState,
 } from "./transfer/context-sync";
 import { prepareOutbound } from "./transfer";
+import { captureDiskDocumentIdFromEnvironment, resolveDiskRefContext } from "./transfer/disk-ref";
+import { PLUGIN_VERSION } from "./version";
 import {
   clearDocumentContext,
   clearSessionForDoc,
@@ -18,11 +20,14 @@ import {
 import { loadCatalog, type CatalogResult } from "./eai/catalog";
 import {
   createSession,
-  deleteSession,
   getHistoryMessages,
+  isAwaitingCompareReport,
+  isCompareTurnRequest,
   isSessionNotFoundError,
+  resolveAssistantWaitTimeoutMs,
   sendMessage,
   waitForAssistantTurn,
+  type HistoryMessage,
 } from "./eai/session";
 import { extractWidgetPayload } from "./eai/widget";
 import { isVfsNotFoundError, isVfsFileReady } from "./eai/vfs";
@@ -47,6 +52,7 @@ class LadcraftR7App {
   private contextError: string | null = null;
   private firstMessageInSession = true;
   private messages: ChatMessage[] = [];
+  private rawHistory: HistoryMessage[] = [];
   private isSending = false;
   private chatReady = false;
   private catalog: CatalogResult | null = null;
@@ -62,6 +68,7 @@ class LadcraftR7App {
   private historySyncTimer: ReturnType<typeof setInterval> | null = null;
   private widgetPollTimer: ReturnType<typeof setInterval> | null = null;
   private lastChatPaintKey = "";
+  private sessionAgentId: string | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -69,6 +76,7 @@ class LadcraftR7App {
 
   /** Initialize plugin after Asc.plugin.init. */
   async start(): Promise<void> {
+    captureDiskDocumentIdFromEnvironment();
     this.editorType = this.detectEditorType();
     const cfg = getConfig();
     this.selectedAgentId = cfg.selectedAgentId;
@@ -96,19 +104,6 @@ class LadcraftR7App {
         onLogin: async (email, password) => {
           const user = await this.client.login(email, password);
           saveUser({ ...user, email });
-          await this.showShell();
-        },
-        onRegisterStart: async (email, invite) => {
-          await this.client.registerStart(email, invite);
-        },
-        onRegisterConfirm: async (token) => this.client.registerConfirm(token),
-        onRegisterComplete: async (completionToken, password, firstName) => {
-          const user = await this.client.registerComplete(
-            completionToken,
-            password,
-            firstName,
-          );
-          saveUser(user);
           await this.showShell();
         },
         onSaveBaseUrl: (baseUrl) => {
@@ -144,25 +139,20 @@ class LadcraftR7App {
   }
 
   private renderShell(): void {
-    const cfg = getConfig();
     renderShellView(
       this.root,
       {
-        baseUrl: cfg.baseUrl,
-        connectionStatus: this.connectionStatus || "Нажмите «Обновить»",
+        connectionStatus: this.connectionStatus || "",
         connectionOk: this.connectionOk,
         catalog: this.catalog,
         selectedAgentId: this.selectedAgentId,
         isLoading: this.shellLoading,
+        pluginVersion: PLUGIN_VERSION,
       },
       {
         onRefresh: () => this.showShell(),
         onSelectAgent: (agentId) => {
-          this.selectedAgentId = agentId;
-          saveConfig({ selectedAgentId: agentId });
-          const agent = this.catalog?.agents.find((a) => a.id === agentId);
-          this.agentLabel = agent?.name ?? agentId;
-          this.renderShell();
+          void this.selectAgent(agentId);
         },
         onOpenChat: () => void this.openChat(),
         onLogout: () => this.logout(),
@@ -178,9 +168,32 @@ class LadcraftR7App {
   }
 
   /** Sync document to session VFS (block 1). */
+  private currentTransferProfile(): ReturnType<typeof resolveTransferProfile> {
+    const agentId = this.selectedAgentId || getConfig().selectedAgentId;
+    return resolveTransferProfile(agentId, this.agentLabel);
+  }
+
+  /** disk-ref: bind r7-disk:{document_id} without VFS upload. */
+  private applyDiskRefContext(): string {
+    const ctx = resolveDiskRefContext(window.Asc?.plugin?.info ?? {});
+    this.contextState = "synced";
+    this.contextError = null;
+    this.contextFileId = ctx.fileId;
+    this.contextFileName = ctx.fileName;
+    this.boundDocKey = null;
+    return ctx.status;
+  }
+
   private async syncDocumentContextForChat(options?: {
     forceReupload?: boolean;
   }): Promise<void> {
+    if (!usesVfsSnapshot(this.currentTransferProfile())) {
+      if (usesDiskRef(this.currentTransferProfile())) {
+        this.applyDiskRefContext();
+      }
+      return;
+    }
+
     if (!this.sessionId) {
       throw new Error("Нет активной сессии агента");
     }
@@ -193,6 +206,19 @@ class LadcraftR7App {
       docKey,
     });
     this.applyContext(ctx, docKey);
+  }
+
+  /** Agent picked in shell — always end prior chat session before next open. */
+  private async selectAgent(agentId: string): Promise<void> {
+    if (!agentId) return;
+    await this.closeActiveSession();
+    this.selectedAgentId = agentId;
+    saveConfig({ selectedAgentId: agentId });
+    const agent = this.catalog?.agents.find((a) => a.id === agentId);
+    this.agentLabel = agent?.name ?? agentId;
+    if (this.screen === "shell") {
+      this.renderShell();
+    }
   }
 
   private async openChat(): Promise<void> {
@@ -209,30 +235,49 @@ class LadcraftR7App {
     const agent = this.catalog?.agents.find((a) => a.id === agentId);
     this.agentLabel = agent?.name ?? agentId;
 
-    let status = "Готовим документ…";
+    let status = usesDiskRef(this.currentTransferProfile())
+      ? "Готовим контекст диска…"
+      : usesVfsSnapshot(this.currentTransferProfile())
+        ? "Готовим документ в VFS…"
+        : "Открываем чат…";
     this.chatReady = false;
     this.renderChatShell(status);
 
     try {
-        await this.ensureSession(agentId);
+      await this.startNewChatSession(agentId);
 
-        if (!this.sessionId) {
+      if (!this.sessionId) {
         throw new Error("Не удалось создать сессию агента");
       }
 
-      try {
-        await this.syncDocumentContextForChat({ forceReupload: true });
-        status = "Документ в VFS";
-      } catch (vfsErr) {
-        this.clearContext();
-        const vfsMsg = vfsErr instanceof Error ? vfsErr.message : String(vfsErr);
-        this.contextState = "error";
-        this.contextError = vfsMsg;
-        status = `Чат без контекста документа (VFS: ${vfsMsg})`;
-        this.chatReady = false;
-        void this.refreshContextState();
-        this.renderChatShell(status);
-        return;
+      const transferProfile = this.currentTransferProfile();
+
+      if (usesVfsSnapshot(transferProfile)) {
+        try {
+          await this.syncDocumentContextForChat({ forceReupload: true });
+          status = "Документ в VFS";
+        } catch (vfsErr) {
+          this.clearContext();
+          const vfsMsg = vfsErr instanceof Error ? vfsErr.message : String(vfsErr);
+          this.contextState = "error";
+          this.contextError = vfsMsg;
+          status = `Чат без контекста документа (VFS: ${vfsMsg})`;
+          this.chatReady = false;
+          void this.refreshContextState();
+          this.renderChatShell(status);
+          return;
+        }
+      } else if (usesDiskRef(transferProfile)) {
+        try {
+          status = this.applyDiskRefContext();
+        } catch (diskErr) {
+          this.contextState = "error";
+          this.contextError = diskErr instanceof Error ? diskErr.message : String(diskErr);
+          status =
+            "Чат открыт — нажмите «Обновить контекст» при смене документа";
+        }
+      } else {
+        status = "Готово";
       }
 
       await this.syncChatFromServer(agentId);
@@ -258,7 +303,7 @@ class LadcraftR7App {
       void this.closeActiveSession().then(() => this.openChat());
     });
     document.getElementById("backToShell")?.addEventListener("click", () => {
-      void this.showShell();
+      void this.exitChatToShell(true);
     });
   }
 
@@ -270,39 +315,46 @@ class LadcraftR7App {
     return `${docKey}::agent:${agentId}`;
   }
 
-  private async ensureSession(agentId: string): Promise<void> {
+  /** Detach locally and create a new Ladcraft session for doc+agent (server session is kept). */
+  private async startNewChatSession(agentId: string): Promise<void> {
+    await this.closeActiveSession(agentId);
     await this.createFreshSession(agentId);
   }
 
-  /** End Ladcraft session on server and drop in-memory chat state. */
+  /** Detach active session locally; does not DELETE on Ladcraft server. */
   private async closeActiveSession(agentId?: string): Promise<void> {
-    const sessionId = this.sessionId;
+    this.stopHistorySyncPoll();
+    this.stopWidgetPoll();
+    this.isSending = false;
+
+    const agentsToClear = new Set<string>();
+    if (this.sessionAgentId) agentsToClear.add(this.sessionAgentId);
+    if (agentId) agentsToClear.add(agentId);
     const resolvedAgentId =
       agentId ?? (this.selectedAgentId || getConfig().selectedAgentId);
+    if (resolvedAgentId) agentsToClear.add(resolvedAgentId);
 
-    if (sessionId) {
-      try {
-        await deleteSession(this.client, sessionId);
-      } catch {
-        /* session may already be deleted */
-      }
+    const userId = getStoredUserId();
+    for (const id of agentsToClear) {
+      clearSessionForDoc(userId, this.buildSessionKey(id));
     }
-
-    if (resolvedAgentId) {
-      clearSessionForDoc(getStoredUserId(), this.buildSessionKey(resolvedAgentId));
-    }
+    clearDocumentContext(userId, this.currentDocKey());
 
     this.sessionId = null;
+    this.sessionAgentId = null;
     this.messages = [];
+    this.rawHistory = [];
     this.chatReady = false;
     this.firstMessageInSession = true;
     this.lastEditorAttachFileId = null;
     this.boundDocKey = null;
     this.needsEditorRemount = true;
     this.chatStatus = "Готово";
+    this.clearContext();
+    this.contextError = null;
   }
 
-  /** Plugin panel closed — end active chat session. */
+  /** Plugin panel closed — detach local chat state (server session preserved). */
   async shutdown(): Promise<void> {
     this.stopChatPoll();
     this.stopWidgetPoll();
@@ -321,7 +373,9 @@ class LadcraftR7App {
       `R7: ${sessionKey.slice(0, 40)}`,
     );
     this.sessionId = session.session_id;
+    this.sessionAgentId = agentId;
     this.messages = [];
+    this.rawHistory = [];
     this.firstMessageInSession = true;
     this.lastEditorAttachFileId = null;
     this.boundDocKey = null;
@@ -337,7 +391,43 @@ class LadcraftR7App {
       const resolvedAgentId =
         agentId ?? (this.selectedAgentId || getConfig().selectedAgentId);
       if (!resolvedAgentId || !isSessionNotFoundError(err)) throw err;
-      await this.createFreshSession(resolvedAgentId);
+      await this.recoverStaleSession(resolvedAgentId);
+    }
+  }
+
+  /** Session expired or deleted server-side — recreate and re-bind VFS. */
+  private async recoverStaleSession(
+    agentId: string,
+    options: { preserveMessages?: boolean } = {},
+  ): Promise<void> {
+    const preserved = options.preserveMessages ? [...this.messages] : null;
+    await this.startNewChatSession(agentId);
+    if (preserved) {
+      this.messages = preserved;
+    }
+    if (!usesVfsSnapshot(this.currentTransferProfile())) {
+      if (usesDiskRef(this.currentTransferProfile())) {
+        try {
+          this.applyDiskRefContext();
+        } catch {
+          /* send path will surface context error */
+        }
+      }
+      this.chatReady = true;
+    } else {
+      try {
+        await this.syncDocumentContextForChat({ forceReupload: true });
+        this.chatReady = true;
+        this.contextState = "synced";
+        this.contextError = null;
+      } catch (vfsErr) {
+        this.clearContext();
+        this.contextState = "error";
+        this.contextError = vfsErr instanceof Error ? vfsErr.message : String(vfsErr);
+        this.chatReady = false;
+      }
+    }
+    if (!preserved) {
       await this.loadHistoryFromServer();
     }
   }
@@ -345,8 +435,13 @@ class LadcraftR7App {
   private async loadHistoryFromServer(): Promise<void> {
     if (!this.sessionId) return;
     const history = await getHistoryMessages(this.client, this.sessionId);
+    this.rawHistory = history;
     this.messages = historyToChatMessages(history, { editorType: this.editorType });
     this.firstMessageInSession = !this.messages.some((m) => m.role === "user");
+  }
+
+  private awaitingCompareReport(): boolean {
+    return isAwaitingCompareReport(this.rawHistory);
   }
 
   private renderChatShell(status: string, force = false): void {
@@ -355,6 +450,7 @@ class LadcraftR7App {
     const contextErrorBefore = this.contextError;
 
     const paint = (forcePaint = false): void => {
+      const diskRef = usesDiskRef(this.currentTransferProfile());
       const paintKey = [
         status,
         this.historyFingerprint(),
@@ -378,6 +474,8 @@ class LadcraftR7App {
           contextError: this.contextError ?? undefined,
           agentLabel: this.agentLabel,
           chatReady: this.chatReady,
+          diskRef,
+          pluginVersion: PLUGIN_VERSION,
         },
         {
           onBack: () => {
@@ -398,6 +496,7 @@ class LadcraftR7App {
                 this.renderChatShell(msg);
               }
             },
+            onSendMessage: (text) => this.handleSend(text),
           }),
         },
       );
@@ -455,7 +554,7 @@ class LadcraftR7App {
     }
   }
 
-  /** Leave chat: delete Ladcraft session so the next open starts clean. */
+  /** Leave chat: clear local binding so the next open starts a new server session. */
   private async exitChatToShell(resetSession: boolean): Promise<void> {
     this.stopHistorySyncPoll();
     this.stopWidgetPoll();
@@ -529,11 +628,19 @@ class LadcraftR7App {
     const changed = this.historyFingerprint() !== before;
     if (this.hasAssistantReplyForLastUser() && awaitingLateReply) {
       this.chatStatus = "Готово";
+    } else if (!this.awaitingCompareReport() && this.chatStatus === "Агент выполняет сравнение...") {
+      this.chatStatus = "Готово";
     }
 
     if (changed || this.chatStatus !== statusBefore) {
       this.renderChatShell(this.chatStatus);
       this.syncWidgetPoll();
+    }
+
+    if (this.awaitingCompareReport()) {
+      this.startHistorySyncPoll(1200);
+    } else if (this.historySyncTimer != null) {
+      this.startHistorySyncPoll(2500);
     }
   }
 
@@ -551,6 +658,23 @@ class LadcraftR7App {
 
   private async handleRefreshContext(): Promise<void> {
     if (!this.sessionId) return;
+    if (!usesVfsSnapshot(this.currentTransferProfile())) {
+      if (!usesDiskRef(this.currentTransferProfile())) return;
+      this.contextState = "syncing";
+      this.renderChatShell("Обновляем контекст диска...");
+      try {
+        const status = this.applyDiskRefContext();
+        this.chatReady = true;
+        this.renderChatShell(status);
+      } catch (err) {
+        this.contextState = "error";
+        this.contextError = err instanceof Error ? err.message : String(err);
+        this.chatReady = true;
+        this.renderChatShell(`Контекст диска: ${this.contextError}`);
+      }
+      return;
+    }
+
     const hadError = this.contextState === "error" || Boolean(this.contextError);
     this.contextState = "syncing";
     this.renderChatShell("Синхронизация документа...");
@@ -594,6 +718,21 @@ class LadcraftR7App {
   }
 
   private async refreshContextState(): Promise<void> {
+    if (usesDiskRef(this.currentTransferProfile())) {
+      try {
+        const status = this.applyDiskRefContext();
+        void status;
+      } catch (err) {
+        this.contextState = "error";
+        this.contextError = err instanceof Error ? err.message : String(err);
+      }
+      return;
+    }
+
+    if (!usesVfsSnapshot(this.currentTransferProfile())) {
+      return;
+    }
+
     const docKey = this.currentDocKey();
     if (this.boundDocKey && this.boundDocKey !== docKey) {
       this.contextState = "dirty";
@@ -657,21 +796,34 @@ class LadcraftR7App {
         beforeCount = (await getHistoryMessages(this.client, this.sessionId)).length;
       } catch (err) {
         if (!isSessionNotFoundError(err)) throw err;
-        await this.createFreshSession(agentId);
+        await this.recoverStaleSession(agentId, { preserveMessages: true });
         this.chatStatus = "Создана новая сессия";
         beforeCount = 0;
       }
 
       try {
-        await this.syncDocumentContextForChat();
-      } catch (vfsErr) {
-        console.error("VFS sync before send failed:", vfsErr);
+        if (usesVfsSnapshot(this.currentTransferProfile())) {
+          await this.syncDocumentContextForChat();
+        } else if (usesDiskRef(this.currentTransferProfile())) {
+          this.applyDiskRefContext();
+        }
+      } catch (ctxErr) {
+        const msg = ctxErr instanceof Error ? ctxErr.message : String(ctxErr);
+        console.error("Context sync before send failed:", ctxErr);
         this.clearContext();
         this.contextState = "error";
-        this.contextError = vfsErr instanceof Error ? vfsErr.message : String(vfsErr);
-        throw new Error(
-          `Документ не в VFS: ${this.contextError}. Нажмите «Синхр. документ».`,
-        );
+        this.contextError = msg;
+        if (usesVfsSnapshot(this.currentTransferProfile())) {
+          throw new Error(
+            `Документ не в VFS: ${this.contextError}. Нажмите «Синхр. документ».`,
+          );
+        }
+        if (usesDiskRef(this.currentTransferProfile())) {
+          throw new Error(
+            `Контекст диска: ${this.contextError}. Нажмите «Обновить контекст».`,
+          );
+        }
+        throw new Error(msg);
       }
 
       await this.sendUserMessage(text, agentId);
@@ -681,11 +833,18 @@ class LadcraftR7App {
         this.firstMessageInSession = false;
       }
 
+      if (isCompareTurnRequest(text, this.rawHistory)) {
+        this.chatStatus = "Агент выполняет сравнение…";
+        this.renderChatShell(this.chatStatus);
+      }
+
+      const waitTimeoutMs = resolveAssistantWaitTimeoutMs(text, this.rawHistory);
+
       const turn = await waitForAssistantTurn(
         this.client,
         this.sessionId,
         beforeCount,
-        300_000,
+        waitTimeoutMs,
         (progress) => {
           if (this.chatStatus === progress) return;
           this.chatStatus = progress;
@@ -727,7 +886,9 @@ class LadcraftR7App {
       }
 
       await this.syncChatFromServer(agentId);
-      this.chatStatus = "Готово";
+      this.chatStatus = this.awaitingCompareReport()
+        ? "Агент выполняет сравнение..."
+        : "Готово";
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.chatStatus = msg;
@@ -742,7 +903,15 @@ class LadcraftR7App {
       }
     } finally {
       this.isSending = false;
-      this.stopChatPoll();
+      this.stopHistorySyncPoll();
+      if (this.awaitingCompareReport()) {
+        if (this.chatStatus === "Готово") {
+          this.chatStatus = "Агент выполняет сравнение...";
+        }
+        this.startHistorySyncPoll(1200);
+      } else {
+        this.startHistorySyncPoll(2500);
+      }
       this.renderChatShell(this.chatStatus);
     }
   }
@@ -758,14 +927,24 @@ class LadcraftR7App {
     };
 
     const send = async (): Promise<void> => {
+      const transferProfile = resolveTransferProfile(agentId, this.agentLabel);
       const { outbound, context } = await prepareOutbound(
         this.client,
         this.editorType,
         userText,
         attachState,
-        { docKey, sessionId: this.sessionId! },
+        {
+          docKey,
+          sessionId: this.sessionId!,
+          historyMessages: this.rawHistory,
+          transferProfile,
+        },
       );
-      this.applyContext(context, docKey);
+      if (usesVfsSnapshot(transferProfile)) {
+        this.applyContext(context, docKey);
+      } else if (usesDiskRef(transferProfile)) {
+        this.applyDiskRefContext();
+      }
 
       await sendMessage(this.client, this.sessionId!, {
         content: outbound.content,
@@ -783,7 +962,7 @@ class LadcraftR7App {
       await send();
     } catch (err) {
       if (isSessionNotFoundError(err)) {
-        await this.createFreshSession(agentId);
+        await this.recoverStaleSession(agentId, { preserveMessages: true });
         await send();
         return;
       }
@@ -863,6 +1042,7 @@ function escapeHtml(s: string): string {
 let app: LadcraftR7App | null = null;
 
 window.Asc.plugin.init = function init() {
+  captureDiskDocumentIdFromEnvironment();
   const root = document.getElementById("app");
   if (!root) return;
   app = new LadcraftR7App(root);

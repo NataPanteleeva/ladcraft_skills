@@ -49,6 +49,11 @@ export interface ChatViewState {
   contextError?: string;
   agentLabel: string;
   chatReady: boolean;
+  /** disk-ref agents use r7-disk id, not session VFS. */
+  diskRef?: boolean;
+  pluginVersion?: string;
+  /** disk-ref diagnostic (id source, Asc.plugin.info keys). */
+  diskDebug?: string;
 }
 
 export interface ChatViewCallbacks {
@@ -152,6 +157,10 @@ function mountChatView(
   statusBar.setAttribute("data-chat-status", "1");
   panel.appendChild(statusBar);
 
+  const debugBar = el("div", "disk-debug-bar");
+  debugBar.setAttribute("data-chat-disk-debug", "1");
+  panel.appendChild(debugBar);
+
   const messagesEl = el("div", "chat-messages");
   messagesEl.setAttribute("data-chat-messages", "1");
   bindMessagesScroll(messagesEl);
@@ -222,17 +231,27 @@ function patchChatView(
 function patchChrome(shell: HTMLElement, state: ChatViewState): void {
   const agentBar = shell.querySelector("[data-chat-agent]");
   if (agentBar) {
-    agentBar.textContent = `Агент: ${state.agentLabel}`;
+    const ver = state.pluginVersion ? ` · v${state.pluginVersion}` : "";
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "agent-label";
+    labelSpan.textContent = state.agentLabel;
+    agentBar.replaceChildren();
+    agentBar.append("Агент: ", labelSpan, ver);
   }
 
   const statusBar = shell.querySelector("[data-chat-status]");
   if (statusBar) {
-    statusBar.textContent = `${state.status}${formatContextNote(state.contextState, state.contextError)}`;
+    statusBar.textContent = `${state.status}${formatContextNote(state.contextState, state.contextError, state.diskRef)}`;
+  }
+
+  const debugBar = shell.querySelector("[data-chat-disk-debug]");
+  if (debugBar) {
+    (debugBar as HTMLElement).style.display = "none";
   }
 
   const syncBtn = shell.querySelector("[data-chat-sync]") as HTMLButtonElement | null;
   if (syncBtn) {
-    syncBtn.textContent = "Синхр. документ";
+    syncBtn.textContent = state.diskRef ? "Обновить контекст" : "Синхр. документ";
     syncBtn.disabled = state.contextState === "syncing" || state.isSending;
     syncBtn.classList.toggle("dirty", state.contextState === "dirty");
     syncBtn.classList.toggle("synced", state.contextState === "synced");
@@ -242,7 +261,9 @@ function patchChrome(shell: HTMLElement, state: ChatViewState): void {
   if (textarea) {
     textarea.placeholder = state.chatReady
       ? "Сообщение..."
-      : "Готовим документ в VFS…";
+      : state.diskRef
+        ? "Готовим контекст диска…"
+        : "Готовим документ в VFS…";
     textarea.disabled = !state.chatReady || state.isSending;
     if (document.activeElement !== textarea) {
       textarea.value = chatInputDraft;
@@ -401,16 +422,28 @@ function renderMessage(
       node.appendChild(renderMessageActions(m.actionPlan, actionHandlers));
     }
   } else {
-    node.textContent = m.text;
+    const body = el("div", "message-body");
+    if (m.text.trim()) {
+      body.textContent = m.text;
+    }
+    node.appendChild(body);
+
+    if (actionHandlers && m.actionPlan?.blocks.length) {
+      node.appendChild(renderMessageActions(m.actionPlan, actionHandlers));
+    }
   }
 
   return node;
 }
 
-function formatContextNote(state: DocumentContextState, error?: string): string {
+function formatContextNote(
+  state: DocumentContextState,
+  error?: string,
+  diskRef?: boolean,
+): string {
   switch (state) {
     case "synced":
-      return " · документ в VFS";
+      return diskRef ? " · документ на диске" : " · документ в VFS";
     case "dirty":
       return " · документ изменён или другой файл — синхронизируйте";
     case "syncing":
@@ -418,7 +451,7 @@ function formatContextNote(state: DocumentContextState, error?: string): string 
     case "error":
       return ` · ${error ?? "ошибка VFS"}`;
     default:
-      return " · без VFS";
+      return diskRef ? " · без контекста диска" : " · без VFS";
   }
 }
 

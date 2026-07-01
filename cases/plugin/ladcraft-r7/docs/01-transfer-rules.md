@@ -1,6 +1,9 @@
-# Блок 1: Передача данных (R7 → Ladcraft VFS → payload)
+# Блок 1: Передача данных (R7 → Ladcraft payload)
 
-> **Статус:** **рабочий вариант (проверено)** для doc-compare — session VFS, экспорт 2026-06-25.  
+> **Default (2026-06):** **disk-ref** — без VFS upload; `r7-disk:{id}` + supplement. Навыки читают Р7-Диск через API.  
+> **Opt-in:** `doc-compare` (session VFS snapshot) — только для legacy-агентов в allowlist / title `compare-r7`.
+
+> **Статус VFS:** проверено для doc-compare — session VFS, экспорт 2026-06-25.  
 > Схема: [`ladcraft-r7-doc-compare-transfer.md`](../../../knowledge-base/plugins/curated/ladcraft-r7-doc-compare-transfer.md).
 
 ## Ответственность
@@ -25,13 +28,15 @@
 - [ ] `files.editor` — профиль `editor-mount` (r7-analyze); для doc-compare **не отправлять**
 - [ ] `content` — текст задания пользователя; **не** вкладывать полный документ в `content`
 - [ ] Допустим supplement выделения в `content` (блок `[Контекст R7: выделенный фрагмент]`)
+- [ ] На **compare-turn** (выбор шаблона из picker): допустим supplement **пути** в `content` — блок `[Контекст R7: snapshot path]` с одной строкой `session_file: /session/r7/…` (без `body.text`; тот же путь, что `mentioned.files[0].file_name`)
 - [ ] Имена: документ `r7-{sanitizedDocKey}.json`, выделение `r7-selection_{docKey}.json`
 - [ ] Snapshot: `schema: r7-snapshot/v1`, обязателен `body.text`; навыки читают через **`read_r7_snapshot_text`** (skill VFS)
 - [ ] Точка изменений: `src/transfer/` (`prepareOutbound` — единая entry point)
 
 ## Отклонено (схема 1)
 
-- Блок `[Контекст R7: документ]` в `content` — **не использовать**
+- Блок `[Контекст R7: документ]` в `content` — **не использовать** (полный текст snapshot)
+- Блок `[Контекст R7: snapshot path]` — **только** `session_file:` на compare-turn; не дублировать тело JSON
 - Custom tool `doc_compare_read` для документа B — **не использовать**
 
 ## Контракты
@@ -90,7 +95,52 @@ HTTP body (блок 2 передаёт как есть):
 | `src/transfer/selection.ts` | `r7-selection/v1` |
 | `src/transfer/message-payload.ts` | `shouldAttachEditor`, `shouldMentionDocumentFiles` |
 
+## VFS opt-in и агент
+
+Плагин по умолчанию **не** загружает snapshot в session VFS. Профиль `doc-compare` (VFS) включается точечно — см. `VFS_SNAPSHOT_AGENT_IDS` и `ladcraft_r7_transfer_profile:{agentId}` в [`config.ts`](../src/config.ts).
+
+**Переключить плагин на VFS — только половина настройки.** Агенту на Ladcraft нужно **встроить (привязать и установить) навыки, которые читают VFS**, иначе snapshot бесполезен:
+
+| Что даёт плагин (doc-compare) | Что должен уметь агент |
+|-------------------------------|-------------------------|
+| Upload `r7-snapshot/v1` в session VFS | Навык с `read_r7_snapshot_text` / bash по `/session/r7/…` |
+| `mentioned.files` с путём к JSON | Instruction: START/COMPARE через VFS, не disk API |
+| Кнопка «Синхр. документ» | `r7-compare-toolkit`, `doc-compare` и т.п. |
+
+Примеры VFS-агентов: compare-r7, «Сравнение 27». Примеры **без VFS**: `r7-compare-docs`, агенты из [`examples_sergey`](../../../examples_sergey/) — только disk-навыки (`r7-compare-disk`, `r7-disk-api`, `analytics_csv`) и `R7_DISK_*` в install env.
+
+**Не смешивать:** агент с disk-instruction + VFS в плагине (или наоборот) — типичный источник сбоев.
+
 ## См. также
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [../../../knowledge-base/plugins/curated/ladcraft-r7-plugin-input-requirements.md](../../../knowledge-base/plugins/curated/ladcraft-r7-plugin-input-requirements.md)
+- [../../../r7-compare-docs/docs/r7-disk-ref-contract.md](../../../r7-compare-docs/docs/r7-disk-ref-contract.md) — disk-ref supplement и авто-поиск `templates`
+
+## Профиль disk-ref (r7-compare-docs)
+
+- **Без** VFS upload документа B
+- `mentioned.files[0].file_id` = `r7-disk:{document_id}`
+- Supplement в `content`:
+
+```text
+[Контекст R7: диск]
+document_id: 12345
+file_name: договор.docx
+```
+
+- Пользователь должен иметь папку **`templates`** в «Мои документы» (латиница, регистр не важен)
+- Код: `src/transfer/disk-ref.ts`, профиль выбирается в `resolveTransferProfile` (`src/config.ts`)
+
+### Приоритет `document_id` (disk-ref)
+
+| Приоритет | Источник |
+|-----------|----------|
+| 1 | `doc.html?id=` / `Documents/Download?id=` из URL браузера (`window.top`, parent chain) |
+| 2 | `documentCallbackUrl`, `referrer`, `info.url` |
+| 3 | `info.documentId` как чистое число |
+| 4 | `externalData` / `jwt` / `referenceData` |
+| 5 | Суффикс `GUID_…_NNN` в `info.documentId` / `info.key` (fallback) |
+| 6 | `localStorage` override, `sessionStorage` cache (привязан к `documentId+key`) |
+
+При расхождении `urlId` и `diskSuffix` плагин выбирает **urlId**; в debug-строке чата: `urlId=… · diskSuffix=… · chosen url over diskSuffix`.

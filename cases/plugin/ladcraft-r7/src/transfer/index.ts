@@ -17,6 +17,7 @@ import {
 } from "./context-sync";
 
 import {
+  appendSnapshotPathSupplement,
   documentBashPath,
   documentFileRef,
   shouldAttachEditor,
@@ -34,6 +35,14 @@ import {
 } from "./selection";
 
 import type { EditorAttachState, OutboundTransfer, PrepareOutboundOptions } from "./types";
+import { prepareDiskRefOutbound } from "./disk-ref";
+import { normalizeTemplateSelection, resolveTemplateSelection } from "./template-selection";
+
+export {
+  collectPresentedTemplateChoices,
+  normalizeTemplateSelection,
+  resolveTemplateSelection,
+} from "./template-selection";
 
 
 
@@ -45,7 +54,7 @@ export { ensureDocumentContext } from "./context-sync";
 
 /**
 
- * Block 1 entry point: sync document to VFS and build outbound message payload.
+ * Block 1 entry point: build outbound message payload (disk-ref default; VFS opt-in).
 
  */
 
@@ -62,6 +71,22 @@ export async function prepareOutbound(
   options: PrepareOutboundOptions = {},
 
 ): Promise<{ outbound: OutboundTransfer; context: EnsureContextResult }> {
+
+  const profile = options.transferProfile ?? "doc-compare";
+
+  if (profile === "disk-ref") {
+    const outbound = await prepareDiskRefOutbound(editorType, userText, attachState, {
+      ...options,
+      historyMessages: options.historyMessages,
+    });
+    const stubContext: EnsureContextResult = {
+      fileId: outbound.primaryFileId,
+      fileName: outbound.primaryFileName,
+      contentHash: "",
+      skippedUpload: true,
+    };
+    return { outbound, context: stubContext };
+  }
 
   const docKey =
 
@@ -85,20 +110,23 @@ export async function prepareOutbound(
 
   const selectionText = await getSelectedText();
 
-  const content = appendSelectionContext(userText, selectionText);
+  const history = options.historyMessages ?? [];
+  const outboundText = history.length
+    ? normalizeTemplateSelection(userText, history)
+    : userText;
 
-
-
-  const profile = options.transferProfile ?? "doc-compare";
+  const bashPath = documentBashPath(context.fileName);
+  const isCompareTurn =
+    history.length > 0 &&
+    resolveTemplateSelection(userText, history).matched;
+  const withSnapshotPath = isCompareTurn
+    ? appendSnapshotPathSupplement(outboundText, bashPath)
+    : outboundText;
+  const content = appendSelectionContext(withSnapshotPath, selectionText);
 
   const fileRefs: ReturnType<typeof documentFileRef>[] = [];
   if (shouldMentionDocumentFiles(attachState, profile)) {
-    fileRefs.push(
-      documentFileRef(
-        context.fileId,
-        documentBashPath(context.fileName),
-      ),
-    );
+    fileRefs.push(documentFileRef(context.fileId, bashPath));
   }
 
   const selectionRef = await uploadSelectionContext(

@@ -5,7 +5,7 @@
     "en": "Ladcraft"
   },
   "guid": "asc.{C1D2E3F4-A5B6-4789-C012-3456789ABCDE}",
-  "version": "0.1.0",
+  "version": "0.4.2",
   "variations": [
     {
       "description": "Ladcraft chat panel for Word and Cell",

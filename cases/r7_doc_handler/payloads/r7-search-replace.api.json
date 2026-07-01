@@ -1,0 +1,12 @@
+{
+  "skill": "r7-search-replace",
+  "title": "r7-search-replace",
+  "name": "r7-search-replace",
+  "description": "Поиск и замена в документе R7 (Word или Cell) через r7.task type search_replace. Используй при запросах «найти и заменить», замене текста или значений; hint r7-search-replace для плагина EAI R7.",
+  "detailed_description": "Выполни поиск и замену в открытом документе R7 по инструкции пользователя.\r\nВерни ТОЛЬКО блок r7.task (без лишнего текста, если замена однозначна):\r\n\r\n```r7.task\r\n[{ \"type\": \"search_replace\", \"data\": { \"search\": \"ТЕКСТ\", \"replace\": \"ЗАМЕНА\", \"matchCase\": false } }]\r\n```\r\n\r\nРаботает в Word и Cell. Одна пара search/replace за ответ.\r\n\r\n## Правила\r\n\r\n- Контекст — прикреплённый файл; убедись, что `search` встречается в документе (или поясни, если нет).\r\n- **Одна** пара `search`/`replace` на ответ. Для нескольких замен — предложи выполнить по одной.\r\n- `matchCase`: `true` только если пользователь явно просит учитывать регистр.\r\n- Не используй другие `type` (`paste`, `cell_paste` и т.д.) — только `search_replace`.\r\n- Не описывай API редактора пользователю.\r\n\r\n## Альтернатива (tool_call)\r\n\r\nЕсли платформа требует tool вместо fenced-блока, вызови `r7_search_replace` с теми же полями: `search`, `replace`, `matchCase` (опционально).",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.0.0",
+  "tools": []
+}

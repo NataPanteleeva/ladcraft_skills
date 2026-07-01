@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "build": "esbuild src/main.ts --bundle --outfile=dist/app.js --format=iife --global-name=LadcraftR7 --target=es2020",
+    "verify": "node scripts/verify-build.js",
     "watch": "npm run build -- --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "npx tsx scripts/smoke-docx-base64.ts"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

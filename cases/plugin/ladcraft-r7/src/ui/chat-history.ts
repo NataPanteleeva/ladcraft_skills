@@ -1,14 +1,29 @@
 import type { EditorType } from "../config";
 import type { HistoryMessage } from "../eai/session";
-import { extractText, extractVisibleText, isAssistantInProgress } from "../eai/session";
 import {
+  extractText,
+  extractVisibleText,
+  hasCompletedToolCall,
+  isAssistantInProgress,
+  isAssistantTurnStalled,
+} from "../eai/session";
+
+const STALLED_ASSISTANT_TEXT =
+  "Агент не завершил ответ. Отправьте сообщение ещё раз или откройте чат заново.";
+import {
+  buildCompareActionsFallbackWidget,
   extractWidgetPayload,
   findPendingWidgetIndex,
   isWidgetMessage,
 } from "../eai/widget";
+import {
+  appendToolWebHints,
+  sanitizeAssistantChatText,
+} from "../apply/display-sanitize";
+import { stripUserMessageSupplements } from "../utils/message-text";
 import { resolveMessageActions } from "../apply/resolve-actions";
-import { resolveActionBinding } from "../apply/user-action-intent";
-import { isComparisonReport } from "../apply/content-extract";
+import { resolveActionBinding, findBindingForUserAnchor } from "../apply/user-action-intent";
+import { isComparisonReport, isTemplatePickerMessage } from "../apply/content-extract";
 import { extractWidgetChoices } from "./widget-choices";
 import type { ChatMessage } from "./chat";
 
@@ -52,15 +67,29 @@ export function historyToChatMessages(
       continue;
     }
 
-    const visibleText = extractVisibleText(item);
+    const visibleText =
+      item.role === "assistant"
+        ? sanitizeAssistantChatText(appendToolWebHints(item, extractVisibleText(item)))
+        : extractVisibleText(item);
     let text = visibleText.trim();
-    if (!text && item.role === "assistant" && isAssistantInProgress(item)) {
-      text = "Агент выполняет запрос…";
+    if (!text && item.role === "assistant") {
+      if (isAssistantInProgress(item)) {
+        text = "Агент выполняет запрос…";
+      } else if (isAssistantTurnStalled(item)) {
+        text = STALLED_ASSISTANT_TEXT;
+      }
     }
     if (!text && item.role === "user") continue;
 
     if (item.role === "assistant") {
-      const hasWidget = Boolean(widgetPayload) || isWidgetMessage(item);
+      const compareActionsWidgetFallback =
+        !widgetPayload &&
+        isComparisonReport(text) &&
+        hasCompletedToolCall(item, "r7_show_compare_actions_widget")
+          ? buildCompareActionsFallbackWidget()
+          : null;
+      const resolvedWidgetPayload = widgetPayload ?? compareActionsWidgetFallback;
+      const hasWidget = Boolean(resolvedWidgetPayload) || isWidgetMessage(item);
       const isPendingWidget = index === pendingWidgetIndex;
       const widgetChoices =
         isPendingWidget && !widgetPayload
@@ -73,7 +102,8 @@ export function historyToChatMessages(
       const blocked =
         hasWidget ||
         Boolean(widgetChoices?.length) ||
-        waitingForInput;
+        waitingForInput ||
+        isTemplatePickerMessage(text);
 
       const binding = resolveActionBinding(items, index);
 
@@ -84,26 +114,50 @@ export function historyToChatMessages(
         blocked,
         userIntent: binding?.userIntent,
         payloadSourceIndex: binding?.payloadSourceIndex,
+        actionAnchorIndex: binding?.actionAnchorIndex,
       });
+
+      const hideActionsOnReport =
+        binding &&
+        binding.actionAnchorIndex !== index &&
+        binding.payloadSourceIndex === index;
 
       messages.push({
         id: item.id,
         role: "assistant",
         text,
-        widget: widgetPayload
-          ? { ...widgetPayload, interactive: isPendingWidget }
+        widget: resolvedWidgetPayload
+          ? { ...resolvedWidgetPayload, interactive: isPendingWidget }
           : undefined,
         widgetChoices: widgetChoices?.length ? widgetChoices : undefined,
         waitingForInput,
-        actionPlan: actionPlan.blocks.length ? actionPlan : undefined,
+        actionPlan:
+          !hideActionsOnReport && actionPlan.blocks.length ? actionPlan : undefined,
       });
       continue;
+    }
+
+    const userBinding = findBindingForUserAnchor(items, index);
+    let userActionPlan;
+    if (userBinding) {
+      const sourceMessage = items[userBinding.payloadSourceIndex];
+      if (sourceMessage?.role === "assistant") {
+        userActionPlan = resolveMessageActions(sourceMessage, {
+          editorType,
+          items,
+          messageIndex: index,
+          userIntent: userBinding.userIntent,
+          payloadSourceIndex: userBinding.payloadSourceIndex,
+          actionAnchorIndex: userBinding.actionAnchorIndex,
+        });
+      }
     }
 
     messages.push({
       id: item.id,
       role: "user",
-      text: (extractText(item) || visibleText).trim(),
+      text: stripUserMessageSupplements((extractText(item) || visibleText).trim()),
+      actionPlan: userActionPlan?.blocks.length ? userActionPlan : undefined,
     });
   }
 

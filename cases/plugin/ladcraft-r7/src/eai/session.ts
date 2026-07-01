@@ -1,5 +1,13 @@
+import {
+  isComparisonReport,
+  isSubstantiveResult,
+  isTemplateBodyDump,
+  isTemplatePickerMessage,
+} from "../apply/content-extract";
+import { stripAgentServiceMarkup } from "../apply/display-sanitize";
 import type { EaiClient } from "./client";
 import type { FileRef } from "../transfer/types";
+import { resolveTemplateSelection } from "../transfer/template-selection";
 import {
   findLatestWidgetAfter,
   isWaitingForUserInput,
@@ -15,6 +23,7 @@ export interface HistoryMessage {
   role: "user" | "assistant" | "system" | "tool";
   kind?: string;
   content?: string | null;
+  status?: string;
   response_timeline?: Array<{ kind: string; content?: string; status?: string }>;
   tool_calls?: ToolCallRecord[] | null;
   metadata?: Record<string, unknown> | null;
@@ -33,6 +42,24 @@ export interface ToolCallRecord {
   result?: unknown;
   success?: boolean;
   status?: string;
+}
+
+function toolCallName(tc: ToolCallRecord): string {
+  return (tc.name ?? tc.tool_name ?? "").trim();
+}
+
+/** True when message has completed tool-call by exact name. */
+export function hasCompletedToolCall(
+  message: HistoryMessage,
+  toolName: string,
+): boolean {
+  const expected = toolName.trim();
+  if (!expected) return false;
+  return (message.tool_calls ?? []).some((tc) => {
+    if (!tc) return false;
+    if (toolCallName(tc) !== expected) return false;
+    return (tc.status ?? "").toLowerCase() === "completed";
+  });
 }
 
 export interface SendMessageOptions {
@@ -90,7 +117,10 @@ export async function createSession(
   return { session_id: unwrapSessionId(res) };
 }
 
-/** Delete agent session on the server (clears workspace binding). */
+/**
+ * Delete agent session on the server.
+ * Do not call on panel close, Back, or agent switch — use localStorage detach only.
+ */
 export async function deleteSession(
   client: EaiClient,
   sessionId: string,
@@ -204,22 +234,109 @@ export async function waitForAssistantReply(
   return turn?.reply ?? null;
 }
 
+/** Default active wait after POST message (non-compare turns). */
+export const DEFAULT_ASSISTANT_WAIT_MS = 300_000;
+
+/** Extended wait when user picked a template / compare is in progress. */
+export const COMPARE_ASSISTANT_WAIT_MS = 600_000;
+
+/** Grace period after tools finish when API never sends a terminal status (fallback only). */
+const STALL_FALLBACK_MS = 120_000;
+
+/** True when user picked a template from the last assistant picker (compare turn). */
+export function isCompareTurnRequest(
+  userText: string,
+  messages: HistoryMessage[] = [],
+): boolean {
+  return resolveTemplateSelection(userText, messages).matched;
+}
+
+/** Active wait timeout for waitForAssistantTurn. */
+export function resolveAssistantWaitTimeoutMs(
+  userText: string,
+  messages: HistoryMessage[],
+): number {
+  if (isCompareTurnRequest(userText, messages)) return COMPARE_ASSISTANT_WAIT_MS;
+  if (isAwaitingCompareReport(messages)) return COMPARE_ASSISTANT_WAIT_MS;
+  return DEFAULT_ASSISTANT_WAIT_MS;
+}
+
+function toolCallCommand(tc: ToolCallRecord): string {
+  const args = tc.arguments ?? tc.args;
+  if (typeof args === "object" && args && "command" in args) {
+    return String((args as { command?: string }).command ?? "");
+  }
+  return "";
+}
+
+function hasCompareRelatedToolCalls(message: HistoryMessage): boolean {
+  const calls = message.tool_calls;
+  if (!calls?.length) return false;
+  return calls.some((tc) => {
+    const name = (tc.name ?? tc.tool_name ?? "").toLowerCase();
+    const cmd = toolCallCommand(tc).toLowerCase();
+    if (/compare_with_template|compare|doc_compare|r7-compare|startup_session/.test(name)) {
+      return true;
+    }
+    if (/head\s+-c\s+\d+/.test(cmd)) return true;
+    if (/compare|r7-word_|templates\//i.test(cmd)) return true;
+    return false;
+  });
+}
+
+/** Skip STALL_FALLBACK while compare tools or interim compare ack are active. */
+export function shouldSuppressStallFallback(
+  messages: HistoryMessage[],
+  latest: HistoryMessage | null,
+): boolean {
+  if (isAwaitingCompareReport(messages)) return true;
+  if (!latest) return false;
+  if (hasPendingToolCalls(latest) && hasCompareRelatedToolCalls(latest)) return true;
+  if (
+    allToolCallsTerminal(latest) &&
+    hasCompareRelatedToolCalls(latest) &&
+    !hasFinalAssistantText(latest)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export interface WaitForAssistantTurnOptions {
+  timeoutMs?: number;
+}
+
 /** Poll until assistant turn completes; may include a widget clarification. */
 export async function waitForAssistantTurn(
   client: EaiClient,
   sessionId: string,
   afterMessageCount: number,
-  timeoutMs = 300_000,
+  timeoutMs = DEFAULT_ASSISTANT_WAIT_MS,
   onProgress?: (status: string) => void,
   onPoll?: (messages: HistoryMessage[]) => void | Promise<void>,
+  _options: WaitForAssistantTurnOptions = {},
 ): Promise<AssistantTurnResult | null> {
   const started = Date.now();
   const pollMs = 1200;
+  let toolsTerminalSince: number | null = null;
   while (Date.now() - started < timeoutMs) {
     const messages = await getHistoryMessages(client, sessionId);
     const latest = findLatestAssistantForTurn(messages, afterMessageCount);
     if (latest) {
-      if (isAssistantReplyReady(latest)) {
+      if (allToolCallsTerminal(latest) && !hasFinalAssistantText(latest)) {
+        toolsTerminalSince ??= Date.now();
+      } else {
+        toolsTerminalSince = null;
+      }
+
+      const treatStalledAsReady =
+        isAssistantTurnStalled(latest) ||
+        (!shouldSuppressStallFallback(messages, latest) &&
+          toolsTerminalSince != null &&
+          Date.now() - toolsTerminalSince >= STALL_FALLBACK_MS &&
+          !isMessageStreaming(latest));
+
+      if (isAssistantReplyReady(latest, { treatStalledAsReady })) {
         const waitingForUser = isWaitingForUserInput(latest);
         let widget = findLatestWidgetAfter(messages, afterMessageCount);
         if (!widget && waitingForUser) {
@@ -269,14 +386,58 @@ export function extractText(message: HistoryMessage): string {
 /** Prefer timeline text chunks; ignore reasoning/tool_call when timeline is present. */
 export function extractVisibleText(message: HistoryMessage): string {
   const timeline = message.response_timeline ?? [];
-  const textParts = timeline
-    .filter((t) => t.kind === "text" && t.content?.trim())
-    .map((t) => t.content!.trim());
-  if (textParts.length) return textParts.join("\n\n");
+  const fromTimeline = joinTimelineVisibleText(timeline);
+  const fromContent = stripAgentServiceMarkup(
+    stripLeakedToolPayload(message.content?.trim() ?? ""),
+  );
 
-  const content = message.content?.trim();
-  if (!content) return "";
-  return stripLeakedToolPayload(content);
+  if (
+    fromContent.length > fromTimeline.length &&
+    !isTemplateBodyDump(fromContent) &&
+    (isComparisonReport(fromContent) || isSubstantiveResult(fromContent))
+  ) {
+    return fromContent;
+  }
+  return fromTimeline || fromContent;
+}
+
+function joinTimelineVisibleText(
+  timeline: NonNullable<HistoryMessage["response_timeline"]>,
+): string {
+  const textEntries = timeline
+    .map((entry, index) => ({
+      kind: entry.kind,
+      content: entry.content?.trim() ?? "",
+      index,
+    }))
+    .filter((entry) => entry.kind === "text" && entry.content);
+
+  if (!textEntries.length) return "";
+
+  const strippedParts = textEntries
+    .map((entry) => ({
+      ...entry,
+      content: stripAgentServiceMarkup(entry.content),
+    }))
+    .filter((entry) => entry.content.trim());
+
+  if (!strippedParts.length) return "";
+
+  const hasToolGroup = timeline.some((entry) => entry.kind === "tool_group");
+  const lastPart = strippedParts[strippedParts.length - 1];
+
+  if (hasToolGroup && strippedParts.length > 1 && isTemplatePickerMessage(lastPart.content)) {
+    const preamble = strippedParts
+      .slice(0, -1)
+      .map((entry) => entry.content)
+      .filter((content) => content && !isTemplatePickerMessage(content))
+      .join("\n\n")
+      .trim();
+    if (preamble) return `${preamble}\n\n${lastPart.content}`;
+    return lastPart.content;
+  }
+
+  return strippedParts.map((entry) => entry.content).join("\n\n");
 }
 
 function stripLeakedToolPayload(text: string): string {
@@ -318,13 +479,13 @@ const COMPARISON_COMPLETE_MARKERS =
   /(?:сравнен[иеё]*\s+завершен|расхождени[йя]\s*[:：]\s*\d+)/i;
 
 const IN_PROGRESS_TEXT_END =
-  /(?:запускаю|сравниваю|читаю|анализирую|выполняю|ожидайте|подождите)[\s.…]*$/i;
+  /(?:запускаю|сравниваю|читаю|анализирую|выполняю|ожидайте|подождите|проведу сравнен|начинаю сравнен|сейчас проведу)[\s.…]*$/i;
 
-function hasInFlightToolGroups(message: HistoryMessage): boolean {
-  const timeline = message.response_timeline ?? [];
-  return timeline.some(
-    (t) => t.kind === "tool_group" && t.status != null && t.status !== "completed",
-  );
+const INTERIM_COMPARE_ACK =
+  /(?:сейчас проведу|проведу сравнен|запускаю сравнен|начинаю сравнен|выполняю сравнен|сравниваю документ)/i;
+
+function getTimeline(message: HistoryMessage): NonNullable<HistoryMessage["response_timeline"]> {
+  return message.response_timeline ?? [];
 }
 
 function hasPendingToolCalls(message: HistoryMessage): boolean {
@@ -339,26 +500,71 @@ function hasPendingToolCalls(message: HistoryMessage): boolean {
   });
 }
 
+/** True when every recorded tool call has a terminal status or result. */
+function allToolCallsTerminal(message: HistoryMessage): boolean {
+  const calls = message.tool_calls;
+  if (!calls?.length) return false;
+  return !hasPendingToolCalls(message);
+}
+
+function hasInFlightToolGroups(message: HistoryMessage): boolean {
+  const timeline = getTimeline(message);
+  const hasUncompletedGroup = timeline.some(
+    (t) =>
+      t.kind === "tool_group" &&
+      t.status != null &&
+      t.status !== "completed" &&
+      t.status !== "failed",
+  );
+  if (!hasUncompletedGroup) return false;
+  // Ladcraft may leave tool_group as "started" after all tool_calls finished.
+  if (allToolCallsTerminal(message)) return false;
+  return true;
+}
+
+function isMessageStreaming(message: HistoryMessage): boolean {
+  const status = message.status?.toLowerCase();
+  if (!status) return false;
+  return status !== "completed" && status !== "done" && status !== "failed" && status !== "error";
+}
+
+/** True when Ladcraft reports the assistant message turn is finished. */
+function isMessageTerminal(message: HistoryMessage): boolean {
+  const status = message.status?.toLowerCase();
+  if (!status) return false;
+  return status === "completed" || status === "done" || status === "failed" || status === "error";
+}
+
+/** True when tools finished but the assistant never produced user-visible text. */
+export function isAssistantTurnStalled(message: HistoryMessage): boolean {
+  if (message.role !== "assistant") return false;
+  if (extractVisibleText(message).trim()) return false;
+  if (isWidgetMessage(message)) return false;
+  if (!isMessageTerminal(message)) return false;
+  if (hasPendingToolCalls(message)) return false;
+  if (hasInFlightToolGroups(message)) return false;
+  return true;
+}
+
 /** True when history has an assistant turn without user-visible text yet. */
 export function isAssistantInProgress(message: HistoryMessage): boolean {
   if (message.role !== "assistant") return false;
   if (extractVisibleText(message).trim()) return false;
   if (isWidgetMessage(message)) return false;
+  if (isAssistantTurnStalled(message)) return false;
   if (isAssistantStillThinking(message)) return true;
-  if (message.tool_calls?.length) return true;
-  const timeline = message.response_timeline ?? [];
-  return timeline.some(
-    (t) =>
-      t.kind === "reasoning" ||
-      t.kind === "tool_call" ||
-      t.kind === "tool_group",
-  );
+  if (hasPendingToolCalls(message)) return true;
+  if (isMessageStreaming(message)) return true;
+  return false;
 }
 
 function looksLikeInProgressReply(text: string): boolean {
   const body = text.trim();
   if (!body) return false;
   if (COMPARISON_COMPLETE_MARKERS.test(body)) return false;
+  if (INTERIM_COMPARE_ACK.test(body) && !COMPARISON_COMPLETE_MARKERS.test(body)) {
+    return true;
+  }
   if (IN_PROGRESS_TEXT_END.test(body)) return true;
   if (/^(?:выбран шаблон|навык активирован)/i.test(body) && body.length < 400) {
     return true;
@@ -366,8 +572,29 @@ function looksLikeInProgressReply(text: string): boolean {
   return false;
 }
 
+/** True when user picked a template but compare report is not in history yet. */
+export function isAwaitingCompareReport(messages: HistoryMessage[]): boolean {
+  let lastUser = -1;
+  let lastUserText = "";
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === "user") {
+      lastUser = i;
+      lastUserText = messages[i].content?.trim() ?? "";
+    }
+  }
+  if (lastUser < 0) return false;
+  if (!isCompareTurnRequest(lastUserText, messages)) return false;
+
+  for (let i = lastUser + 1; i < messages.length; i++) {
+    const item = messages[i];
+    if (item.role !== "assistant") continue;
+    if (isComparisonReport(extractVisibleText(item))) return false;
+  }
+  return true;
+}
+
 function isAssistantStillThinking(message: HistoryMessage): boolean {
-  const timeline = message.response_timeline ?? [];
+  const timeline = getTimeline(message);
   const hasText = hasFinalAssistantText(message);
 
   if (hasInFlightToolGroups(message)) return true;
@@ -393,34 +620,56 @@ function isAssistantStillThinking(message: HistoryMessage): boolean {
     return false;
   }
   if (lastStartedToolIdx >= 0 && lastTextIdx < lastStartedToolIdx) {
-    return true;
+    if (!isMessageTerminal(message)) return true;
+    return false;
   }
 
   if (hasText) return false;
-  if (message.tool_calls?.length) return false;
+  // Tools done — agent may still be writing the user-visible reply.
+  if (allToolCallsTerminal(message) && !isMessageTerminal(message)) return true;
   if (timeline.some((t) => t.kind === "tool_call")) return true;
   if (timeline.some((t) => t.kind === "reasoning")) return true;
   return false;
 }
 
-function isAssistantReplyReady(message: HistoryMessage): boolean {
+/** User-facing text sufficient to end active wait (picker or substantive reply). */
+export function isRenderableAssistantText(text: string): boolean {
+  const body = text.trim();
+  if (!body) return false;
+  return isTemplatePickerMessage(body) || isSubstantiveResult(body);
+}
+
+/** True when assistant turn can be shown and active wait may end. */
+export function isAssistantReplyReady(
+  message: HistoryMessage,
+  options: { treatStalledAsReady?: boolean } = {},
+): boolean {
   if (message.role !== "assistant") return false;
+  if (isMessageStreaming(message)) return false;
   if (isWidgetMessage(message)) return true;
   if (isAssistantStillThinking(message)) return false;
   if (isWaitingForUserInput(message) && hasFinalAssistantText(message)) return true;
-  if (!hasFinalAssistantText(message) && !message.tool_calls?.length) return false;
-  const visible = extractText(message);
-  if (looksLikeInProgressReply(visible)) return false;
-  return true;
+  if (options.treatStalledAsReady && isAssistantTurnStalled(message)) return true;
+  if (!hasFinalAssistantText(message)) return false;
+  return isRenderableAssistantText(extractText(message));
 }
 
 function getProgressLabel(message: HistoryMessage): string {
-  const timeline = message.response_timeline ?? [];
-  const hasActiveTools = timeline.some((t) => t.kind === "tool_group" && t.status === "started");
+  const timeline = getTimeline(message);
+  const hasActiveTools =
+    hasInFlightToolGroups(message) ||
+    timeline.some((t) => t.kind === "tool_group" && t.status === "started");
   if (hasActiveTools && !hasFinalAssistantText(message)) {
     return "Агент выполняет действия...";
   }
   if (hasActiveTools) {
+    return "Агент формирует ответ...";
+  }
+  if (
+    allToolCallsTerminal(message) &&
+    !hasFinalAssistantText(message) &&
+    !isMessageTerminal(message)
+  ) {
     return "Агент формирует ответ...";
   }
   if (timeline.some((t) => t.kind === "reasoning" || t.kind === "tool_call")) {
@@ -439,20 +688,46 @@ function unwrapSessionId(res: Record<string, unknown>): string {
   throw new Error("Ответ API не содержит session_id");
 }
 
+function normalizeHistoryMessage(raw: Record<string, unknown>): HistoryMessage {
+  const msg = raw as unknown as HistoryMessage;
+  if (!msg.response_timeline && Array.isArray(raw.responseTimeline)) {
+    msg.response_timeline = raw.responseTimeline as HistoryMessage["response_timeline"];
+  }
+  if (!msg.tool_calls && Array.isArray(raw.toolCalls)) {
+    msg.tool_calls = raw.toolCalls as HistoryMessage["tool_calls"];
+  }
+  if (!msg.widget_html && typeof raw.widgetHtml === "string") {
+    msg.widget_html = raw.widgetHtml;
+  }
+  if (!msg.widget_id && typeof raw.widgetId === "string") {
+    msg.widget_id = raw.widgetId;
+  }
+  if (!msg.widget_name && typeof raw.widgetName === "string") {
+    msg.widget_name = raw.widgetName;
+  }
+  if (!msg.widget_app_id && typeof raw.widgetAppId === "string") {
+    msg.widget_app_id = raw.widgetAppId;
+  }
+  return msg;
+}
+
 function unwrapHistoryMessages(res: Record<string, unknown>): HistoryMessage[] {
+  let raw: unknown[] = [];
   if (Array.isArray(res.data)) {
-    return res.data as HistoryMessage[];
+    raw = res.data;
+  } else {
+    const result = res.result;
+    if (result && typeof result === "object" && !Array.isArray(result)) {
+      const obj = result as Record<string, unknown>;
+      if (Array.isArray(obj.data)) raw = obj.data;
+      else if (Array.isArray(obj.messages)) raw = obj.messages;
+    } else if (Array.isArray(res.messages)) {
+      raw = res.messages;
+    }
   }
-  const result = res.result;
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    const obj = result as Record<string, unknown>;
-    if (Array.isArray(obj.data)) return obj.data as HistoryMessage[];
-    if (Array.isArray(obj.messages)) return obj.messages as HistoryMessage[];
-  }
-  if (Array.isArray(res.messages)) {
-    return res.messages as HistoryMessage[];
-  }
-  return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map(normalizeHistoryMessage);
 }
 
 function sleep(ms: number): Promise<void> {

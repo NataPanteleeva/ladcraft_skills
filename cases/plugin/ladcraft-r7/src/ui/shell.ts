@@ -1,14 +1,15 @@
 import type { CatalogApp, CatalogResult } from "../eai/catalog";
 import { getConfig } from "../config";
+import { PLUGIN_VERSION } from "../version";
 import { readScrollTop, restoreScrollTop } from "./scroll-preserve";
 
 export interface ShellViewState {
-  baseUrl: string;
   connectionStatus: string;
   connectionOk: boolean;
   catalog: CatalogResult | null;
   selectedAgentId: string;
   isLoading: boolean;
+  pluginVersion: string;
 }
 
 export interface ShellViewCallbacks {
@@ -33,13 +34,21 @@ export function renderShellView(
   const panel = el("div", "panel shell-panel");
   root.appendChild(panel);
 
-  const header = el("div", "stack");
-  const statusClass = state.connectionOk ? "success" : state.isLoading ? "muted" : "error";
+  const header = el("div", "stack shell-header");
+  const statusText = state.connectionOk
+    ? "Подключено"
+    : state.isLoading
+      ? "Проверка подключения…"
+      : "Не подключено";
   header.innerHTML = `
-    <h3 style="margin:0;font-size:14px">Ladcraft</h3>
-    <p class="${statusClass}" style="margin:0">${escapeHtml(state.connectionStatus)}</p>
-    <p class="muted" style="margin:0">${escapeHtml(state.baseUrl)}</p>
+    <h3 style="margin:0;font-size:14px">Ladcraft <span class="muted" style="font-weight:normal">v${escapeHtml(state.pluginVersion)}</span></h3>
+    <p class="${state.connectionOk ? "success" : "muted"}" style="margin:0">${escapeHtml(statusText)}</p>
   `;
+  if (!state.connectionOk && !state.isLoading && state.connectionStatus) {
+    const connErr = el("div", "error");
+    connErr.textContent = state.connectionStatus;
+    header.appendChild(connErr);
+  }
   panel.appendChild(header);
 
   const toolbar = el("div", "toolbar");
@@ -102,7 +111,7 @@ function buildAgentsSection(
   state: ShellViewState,
   callbacks: ShellViewCallbacks,
 ): HTMLElement {
-  const section = el("div", "stack");
+  const section = el("div", "stack agents-section");
   const title = el("label", "");
   title.textContent = "Агенты";
   section.appendChild(title);

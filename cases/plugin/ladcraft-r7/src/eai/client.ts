@@ -128,11 +128,11 @@ export class EaiClient {
         await this.request<{ data?: unknown[] }>(
           "/v1/application/list?type=agent&return_installed=true&limit=1",
         );
-        return { ok: true, message: `Подключено к ${base}` };
+        return { ok: true, message: "Подключено" };
       }
       const res = await fetch(`${base}/v1/auth/login`, { method: "OPTIONS" });
       if (res.ok || res.status === 405 || res.status === 400) {
-        return { ok: true, message: `API доступен: ${base}` };
+        return { ok: true, message: "Подключено" };
       }
       return { ok: false, message: `HTTP ${res.status}` };
     } catch (err) {

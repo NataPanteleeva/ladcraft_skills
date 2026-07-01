@@ -14,6 +14,7 @@ export function shouldAttachEditor(
   profile: TransferProfile = "doc-compare",
 ): boolean {
   if (profile === "doc-compare") return false;
+  if (profile === "disk-ref") return false;
   if (state.firstMessageInSession) return true;
   if (state.needsEditorRemount) return true;
   if (
@@ -49,4 +50,14 @@ export function documentFileRef(fileId: string, bashPath: string) {
     file_name: bashPath,
     mime_type: JSON_MIME,
   };
+}
+
+/**
+ * On compare-turn, append canonical snapshot bash path to API content (not document body).
+ * Reduces hex-path typos when the agent copies B from chat instead of mentioned.files.
+ */
+export function appendSnapshotPathSupplement(userText: string, bashPath: string): string {
+  const path = bashPath.trim();
+  if (!path) return userText;
+  return `${userText}\n\n---\n[Контекст R7: snapshot path]\nsession_file: ${path}\n---`;
 }

@@ -1,0 +1,1564 @@
+{
+  "data": [
+    {
+      "id": "mWpjJYOnFMtQWNCjtxdZa",
+      "role": "user",
+      "kind": "text",
+      "content": "Сделай отчёт по продажам из data_first_1000.csv в папке 109",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "attached_files": null,
+      "metadata": {
+        "timestamp": "2026-06-29T13:41:15.814Z",
+        "agent_request": {
+          "content": "Сделай отчёт по продажам из data_first_1000.csv в папке 109",
+          "assistant_mode": "execution"
+        }
+      }
+    },
+    {
+      "id": "xoTbMC9wLFQZTgjwXh7qZ",
+      "role": "assistant",
+      "kind": "text",
+      "content": "\n**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109\n\n**KPI из сводки:**\n- Покупок (cart): **39**\n- Выручка: **325 863,72 ₽**\n- Средний чек: **8 355,48 ₽**\n- Уникальных покупателей: **36**\n\nФайл содержит **5 листов** с таблицами и графиками: Сводка, Бренды, Категории, Воронка, Динамика. Откройте его в редакторе таблиц Р7 Офис.",
+      "response_timeline": [
+        {
+          "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:0",
+          "kind": "reasoning",
+          "order": 0,
+          "content": "The user wants to generate a sales report from `data_first_1000.csv` in folder 109. I have the `analytics_csv` skill installed with tool `analytics_csv_generate_report`. I should call it directly.\n"
+        },
+        {
+          "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:1",
+          "kind": "tool_group",
+          "order": 1,
+          "status": "completed",
+          "tool_call_ids": [
+            "call_103e2d99216e45c18f81902d",
+            "call_function_op5vgnosq1v8_1"
+          ],
+          "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+        },
+        {
+          "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:2",
+          "kind": "reasoning",
+          "order": 2,
+          "content": "The skill is activated. Now I need to call the `analytics_csv_generate_report` tool with the parameters:\n- directory_id: 109\n- csv_name: \"data_first_1000.csv\""
+        },
+        {
+          "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:3",
+          "kind": "text",
+          "order": 3,
+          "content": "\n**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109\n\n**KPI из сводки:**\n- Покупок (cart): **39**\n- Выручка: **325 863,72 ₽**\n- Средний чек: **8 355,48 ₽**\n- Уникальных покупателей: **36**\n\nФайл содержит **5 листов** с таблицами и графиками: Сводка, Бренды, Категории, Воронка, Динамика. Откройте его в редакторе таблиц Р7 Офис."
+        }
+      ],
+      "tool_calls": [
+        {
+          "id": "call_103e2d99216e45c18f81902d",
+          "name": "skills",
+          "type": "function",
+          "command": "skills activate analytics_csv",
+          "content": "Подключил навык analytics_csv. Инструменты: analytics_csv_generate_report",
+          "arguments": "{\"action\":\"activate\",\"skill_ref\":\"analytics_csv\"}",
+          "sse_events": [
+            {
+              "data": {
+                "data": {
+                  "command": "skills activate analytics_csv",
+                  "arguments": {
+                    "action": "activate",
+                    "skill_ref": "analytics_csv"
+                  },
+                  "tool_name": "skills",
+                  "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                  "tool_call_id": "call_103e2d99216e45c18f81902d",
+                  "display_title": "Проверяю активные навыки",
+                  "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                },
+                "type": "tool_call_start",
+                "timestamp": "2026-06-29T13:41:19.817Z",
+                "session_id": "GI9vDJfmL56wFbce06afd"
+              },
+              "event": "tool_call_start",
+              "received_at": "2026-06-29T13:41:19.817Z"
+            },
+            {
+              "data": {
+                "data": {
+                  "result": {
+                    "tools": [
+                      "analytics_csv_generate_report"
+                    ],
+                    "success": true,
+                    "skill_id": "11CVZSP4JnJhdeUe6umTH",
+                    "skill_ref": "analytics_csv",
+                    "skill_name": "analytics_csv",
+                    "added_iterations": 5,
+                    "skill_instructions": "analytics_csv",
+                    "skill_state_marker": {
+                      "type": "skill_activation",
+                      "action": "activated",
+                      "active": true,
+                      "skill_id": "11CVZSP4JnJhdeUe6umTH",
+                      "skill_ref": "analytics_csv",
+                      "skill_name": "analytics_csv"
+                    }
+                  },
+                  "content": "Подключил навык analytics_csv. Инструменты: analytics_csv_generate_report",
+                  "success": true,
+                  "tool_name": "skills",
+                  "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                  "tool_call_id": "call_103e2d99216e45c18f81902d",
+                  "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                },
+                "type": "tool_call_result",
+                "timestamp": "2026-06-29T13:41:19.879Z",
+                "session_id": "GI9vDJfmL56wFbce06afd"
+              },
+              "event": "tool_call_result",
+              "received_at": "2026-06-29T13:41:19.879Z"
+            }
+          ],
+          "display_title": "Проверяю активные навыки",
+          "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0",
+          "result": {
+            "success": true,
+            "skill_id": "11CVZSP4JnJhdeUe6umTH",
+            "skill_ref": "analytics_csv",
+            "skill_name": "analytics_csv",
+            "skill_instructions": "analytics_csv",
+            "tools": [
+              "analytics_csv_generate_report"
+            ],
+            "added_iterations": 5,
+            "skill_state_marker": {
+              "type": "skill_activation",
+              "action": "activated",
+              "active": true,
+              "skill_id": "11CVZSP4JnJhdeUe6umTH",
+              "skill_ref": "analytics_csv",
+              "skill_name": "analytics_csv"
+            }
+          },
+          "success": true
+        },
+        {
+          "id": "call_function_op5vgnosq1v8_1",
+          "name": "analytics_csv_generate_report",
+          "type": "function",
+          "command": "analytics_csv_generate_report",
+          "content": "Выполнил analytics csv generate report",
+          "arguments": "{\"csv_name\":\"data_first_1000.csv\",\"directory_id\":109}",
+          "sse_events": [
+            {
+              "data": {
+                "data": {
+                  "command": "analytics_csv_generate_report",
+                  "arguments": {
+                    "csv_name": "data_first_1000.csv",
+                    "directory_id": 109
+                  },
+                  "tool_name": "analytics_csv_generate_report",
+                  "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                  "tool_call_id": "call_function_op5vgnosq1v8_1",
+                  "display_title": "Отдаю в analytics csv generate report",
+                  "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                },
+                "type": "tool_call_start",
+                "timestamp": "2026-06-29T13:41:27.638Z",
+                "session_id": "GI9vDJfmL56wFbce06afd"
+              },
+              "event": "tool_call_start",
+              "received_at": "2026-06-29T13:41:27.638Z"
+            },
+            {
+              "data": {
+                "data": {
+                  "result": {
+                    "ok": true,
+                    "sheets": [
+                      {
+                        "name": "Сводка",
+                        "rows": 39
+                      },
+                      {
+                        "name": "Бренды",
+                        "rows": 10
+                      },
+                      {
+                        "name": "Категории",
+                        "rows": 5
+                      },
+                      {
+                        "name": "Воронка",
+                        "rows": 2
+                      },
+                      {
+                        "name": "Динамика",
+                        "rows": 1
+                      }
+                    ],
+                    "summary": {
+                      "revenue": 325863.72,
+                      "avgCheck": 8355.48,
+                      "viewCount": 921,
+                      "uniqueBuyers": 36,
+                      "purchaseCount": 39,
+                      "funnelPurchaseCount": 39
+                    },
+                    "base_url": "https://cddisk.gptz.lad-soft.ru",
+                    "csv_name": "data_first_1000.csv",
+                    "csv_rows": 999,
+                    "warnings": [
+                      "Покупки для сводки/брендов/категорий/динамики: event_type=cart. Воронка: view → purchase."
+                    ],
+                    "operation": "analytics_csv_generate_report",
+                    "agent_stop": true,
+                    "output_name": "sales_report_20260629_1341.xlsx",
+                    "directory_id": 109,
+                    "do_not_retry": true,
+                    "agent_message": "Отчёт «sales_report_20260629_1341.xlsx» создан в папке id=109. Покупок (cart): 39, выручка: 325863.72 руб. Откройте файл в редакторе таблиц Р7 Офис — 5 листов с таблицами и графиками.",
+                    "csv_document_id": 89,
+                    "output_size_bytes": 16670,
+                    "output_document_id": null,
+                    "forbid_followup_tools": [
+                      "analytics_csv_generate_report"
+                    ]
+                  },
+                  "content": "Выполнил analytics csv generate report",
+                  "success": true,
+                  "tool_name": "analytics_csv_generate_report",
+                  "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                  "tool_call_id": "call_function_op5vgnosq1v8_1",
+                  "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                },
+                "type": "tool_call_result",
+                "timestamp": "2026-06-29T13:41:37.834Z",
+                "session_id": "GI9vDJfmL56wFbce06afd"
+              },
+              "event": "tool_call_result",
+              "received_at": "2026-06-29T13:41:37.834Z"
+            }
+          ],
+          "display_title": "Отдаю в analytics csv generate report",
+          "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0",
+          "result": {
+            "ok": true,
+            "operation": "analytics_csv_generate_report",
+            "base_url": "https://cddisk.gptz.lad-soft.ru",
+            "directory_id": 109,
+            "csv_name": "data_first_1000.csv",
+            "csv_document_id": 89,
+            "csv_rows": 999,
+            "output_name": "sales_report_20260629_1341.xlsx",
+            "output_document_id": null,
+            "output_size_bytes": 16670,
+            "summary": {
+              "purchaseCount": 39,
+              "revenue": 325863.72,
+              "avgCheck": 8355.48,
+              "uniqueBuyers": 36,
+              "viewCount": 921,
+              "funnelPurchaseCount": 39
+            },
+            "sheets": [
+              {
+                "name": "Сводка",
+                "rows": 39
+              },
+              {
+                "name": "Бренды",
+                "rows": 10
+              },
+              {
+                "name": "Категории",
+                "rows": 5
+              },
+              {
+                "name": "Воронка",
+                "rows": 2
+              },
+              {
+                "name": "Динамика",
+                "rows": 1
+              }
+            ],
+            "warnings": [
+              "Покупки для сводки/брендов/категорий/динамики: event_type=cart. Воронка: view → purchase."
+            ],
+            "do_not_retry": true,
+            "agent_stop": true,
+            "forbid_followup_tools": [
+              "analytics_csv_generate_report"
+            ],
+            "agent_message": "Отчёт «sales_report_20260629_1341.xlsx» создан в папке id=109. Покупок (cart): 39, выручка: 325863.72 руб. Откройте файл в редакторе таблиц Р7 Офис — 5 листов с таблицами и графиками."
+          },
+          "success": true
+        }
+      ],
+      "tool_call_id": null,
+      "attached_files": null,
+      "metadata": {
+        "timestamp": "2026-06-29T13:41:19.880Z",
+        "reasoning": "The user wants to generate a sales report from `data_first_1000.csv` in folder 109. I have the `analytics_csv` skill installed with tool `analytics_csv_generate_report`. I should call it directly.\n\n\nThe skill is activated. Now I need to call the `analytics_csv_generate_report` tool with the parameters:\n- directory_id: 109\n- csv_name: \"data_first_1000.csv\"",
+        "sse_message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+        "response_version": {
+          "run_id": "TvHWUnV6TwUo2a0Axumzx",
+          "group_id": "agent-response:mWpjJYOnFMtQWNCjtxdZa",
+          "regenerated": false,
+          "source_user_message_id": "mWpjJYOnFMtQWNCjtxdZa"
+        },
+        "response_timeline": [
+          {
+            "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:1",
+            "kind": "tool_group",
+            "order": 1,
+            "status": "completed",
+            "tool_call_ids": [
+              "call_103e2d99216e45c18f81902d",
+              "call_function_op5vgnosq1v8_1"
+            ],
+            "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+          },
+          {
+            "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:3",
+            "kind": "text",
+            "order": 3,
+            "content": "\n**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109\n\n**KPI из сводки:**\n- Покупок (cart): **39**\n- Выручка: **325 863,72 ₽**\n- Средний чек: **8 355,48 ₽**\n- Уникальных покупателей: **36**\n\nФайл содержит **5 листов** с таблицами и графиками: Сводка, Бренды, Категории, Воронка, Динамика. Откройте его в редакторе таблиц Р7 Офис."
+          }
+        ],
+        "response_timeline_last_seq": 62,
+        "usage": {
+          "model_id": "4ohPFvIN0OJ48pZUR2wFk",
+          "model_name": "minimax-M2.7",
+          "cost_amount": 0.0110943,
+          "total_tokens": 35925,
+          "cost_currency": "USD",
+          "prompt_tokens": 35573,
+          "request_count": 3,
+          "completion_tokens": 352,
+          "model_external_id": "MiniMax-M2.7",
+          "request_breakdown": [
+            {
+              "model_id": "4ohPFvIN0OJ48pZUR2wFk",
+              "model_name": "minimax-M2.7",
+              "cost_amount": 0.0082317,
+              "provider_id": "ZzOYS2LiIoFc3STH0ydrt",
+              "total_tokens": 26641,
+              "cost_currency": "USD",
+              "prompt_tokens": 26375,
+              "provider_kind": "anthropic",
+              "provider_name": "MINIMAX-ANTHROPIC",
+              "request_count": 2,
+              "completion_tokens": 266,
+              "model_external_id": "MiniMax-M2.7"
+            },
+            {
+              "model_id": "4ohPFvIN0OJ48pZUR2wFk",
+              "model_name": "minimax-M2.7",
+              "cost_amount": 0.0028626,
+              "provider_id": "wSNhVDGKcjDCBtS8UNKWy",
+              "total_tokens": 9284,
+              "cost_currency": "USD",
+              "prompt_tokens": 9198,
+              "provider_kind": "openai-compatible",
+              "provider_name": "GONKA-AI",
+              "request_count": 1,
+              "completion_tokens": 86,
+              "model_external_id": "MiniMaxAI/MiniMax-M2.7"
+            }
+          ]
+        },
+        "tokens": 35925,
+        "billing": {
+          "mode": "credits",
+          "item_count": 5,
+          "breakdown_raw": {
+            "llm": 0.79879,
+            "web": 0,
+            "runtime": 0.1,
+            "tools_total": 0.1
+          },
+          "charge_status": "committed",
+          "raw_cost_amount": 0.89879,
+          "billed_cost_amount": 1,
+          "billed_cost_currency": "credits",
+          "daily_limit_remaining": 2
+        },
+        "cancelled": false,
+        "iterations": 3,
+        "latency_ms": 32820,
+        "prompt_hash": "a3d30ed51c2445378dbd8fbd7568563c8f7b72fe54aeab62275f09aea35a6aeb",
+        "token_usage": {
+          "total_tokens": 35925,
+          "prompt_tokens": 35573,
+          "completion_tokens": 352
+        },
+        "terminal_status": "completed",
+        "prompt_breakdown": {
+          "items": [
+            {
+              "key": "sessionTaskContext",
+              "length": 309,
+              "reason": "default_enabled",
+              "included": true,
+              "priority": 35
+            },
+            {
+              "key": "promptRepository",
+              "length": 2548,
+              "reason": "hard_policy_always_enabled",
+              "included": true,
+              "priority": 34
+            },
+            {
+              "key": "startupOrder",
+              "length": 2622,
+              "reason": "hard_policy_always_enabled",
+              "included": true,
+              "priority": 110
+            },
+            {
+              "key": "currentAgent",
+              "length": 117,
+              "reason": "hard_policy_always_enabled",
+              "included": true,
+              "priority": 30
+            },
+            {
+              "key": "agentInstruction",
+              "length": 1627,
+              "reason": "default_enabled",
+              "included": true,
+              "priority": 32
+            },
+            {
+              "key": "userInfo",
+              "length": 127,
+              "reason": "default_enabled",
+              "included": true,
+              "priority": 80
+            },
+            {
+              "key": "memory",
+              "length": 28,
+              "reason": "default_enabled",
+              "included": true,
+              "priority": 60
+            },
+            {
+              "key": "skill_catalog",
+              "length": 552,
+              "reason": "default_enabled",
+              "included": true,
+              "priority": 45
+            }
+          ],
+          "totalLength": 7930
+        },
+        "product_audit_log": [
+          {
+            "code": "run_started",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "source": "user",
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "task_phase": "execution",
+              "max_iterations": 500,
+              "request_preview": "Сделай отчёт по продажам из data_first_1000.csv в папке 109"
+            },
+            "level": "info",
+            "message": "Агент начал run по запросу: Сделай отчёт по продажам из data_first_1000.csv в папке 109",
+            "timestamp": "2026-06-29T13:41:15.971Z"
+          },
+          {
+            "code": "context_built",
+            "data": {
+              "source": "user",
+              "history_count": 1,
+              "active_apps_count": 0,
+              "skill_catalog_count": 2,
+              "prompt_sections_count": 8
+            },
+            "level": "info",
+            "message": "Контекст агента собран и готов к формированию системного промпта.",
+            "timestamp": "2026-06-29T13:41:16.248Z"
+          },
+          {
+            "code": "prompt_policy_applied",
+            "data": {
+              "section_reasons": [
+                {
+                  "key": "sessionTaskContext",
+                  "reason": "default_enabled",
+                  "included": true
+                },
+                {
+                  "key": "promptRepository",
+                  "reason": "hard_policy_always_enabled",
+                  "included": true
+                },
+                {
+                  "key": "startupOrder",
+                  "reason": "hard_policy_always_enabled",
+                  "included": true
+                },
+                {
+                  "key": "currentAgent",
+                  "reason": "hard_policy_always_enabled",
+                  "included": true
+                },
+                {
+                  "key": "agentInstruction",
+                  "reason": "default_enabled",
+                  "included": true
+                },
+                {
+                  "key": "userInfo",
+                  "reason": "default_enabled",
+                  "included": true
+                },
+                {
+                  "key": "skill_catalog",
+                  "reason": "default_enabled",
+                  "included": true
+                },
+                {
+                  "key": "memory",
+                  "reason": "default_enabled",
+                  "included": true
+                }
+              ],
+              "disabled_sections": [],
+              "included_sections": [
+                "sessionTaskContext",
+                "promptRepository",
+                "startupOrder",
+                "currentAgent",
+                "agentInstruction",
+                "userInfo",
+                "skill_catalog",
+                "memory"
+              ],
+              "total_prompt_length": 16035
+            },
+            "level": "info",
+            "message": "Политика промпта включила 8 секций для текущего run.",
+            "timestamp": "2026-06-29T13:41:16.261Z"
+          },
+          {
+            "code": "turn_decision_evaluated",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "outcome": {
+                "kind": "continue",
+                "reason": "tool_round"
+              },
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "decisions": [
+                {
+                  "action": "allow_tool_calls",
+                  "reason": "tool_calls_present",
+                  "allowed": true,
+                  "details": {
+                    "tool_calls_count": 1
+                  }
+                },
+                {
+                  "action": "allow_terminal_reply",
+                  "reason": "normal_flow",
+                  "allowed": true,
+                  "details": {
+                    "task_phase": "execution",
+                    "has_published_plan": false,
+                    "unfinished_steps_count": 0
+                  }
+                }
+              ],
+              "tool_calls": [
+                "skills"
+              ],
+              "denied_count": 0,
+              "requires_waiting_state": false
+            },
+            "level": "info",
+            "message": "Turn прошёл проверку правил поведения агента.",
+            "timestamp": "2026-06-29T13:41:19.814Z"
+          },
+          {
+            "code": "tool_call_started",
+            "data": {
+              "tool_name": "skills",
+              "tool_call_id": "call_103e2d99216e45c18f81902d"
+            },
+            "level": "info",
+            "message": "Запущен вызов инструмента \"skills\".",
+            "timestamp": "2026-06-29T13:41:19.817Z"
+          },
+          {
+            "code": "tool_execution_planned",
+            "data": {
+              "tools": [
+                {
+                  "tool_name": "skills",
+                  "execution_class": "sequential"
+                }
+              ],
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "segment_count": 1,
+              "total_tool_calls": 1,
+              "parallel_segments": 0,
+              "sequential_segments": 1
+            },
+            "level": "info",
+            "message": "Политика выполнения разложила 1 вызовов на 1 сегментов.",
+            "timestamp": "2026-06-29T13:41:19.817Z"
+          },
+          {
+            "code": "tool_call_completed",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "tool_name": "skills",
+              "is_success": true,
+              "tool_call_id": "call_103e2d99216e45c18f81902d"
+            },
+            "level": "info",
+            "message": "Инструмент \"skills\" завершился успешно.",
+            "timestamp": "2026-06-29T13:41:19.880Z"
+          },
+          {
+            "code": "turn_decision_evaluated",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "outcome": {
+                "kind": "continue",
+                "reason": "tool_round"
+              },
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "decisions": [
+                {
+                  "action": "allow_tool_calls",
+                  "reason": "tool_calls_present",
+                  "allowed": true,
+                  "details": {
+                    "tool_calls_count": 1
+                  }
+                },
+                {
+                  "action": "allow_terminal_reply",
+                  "reason": "normal_flow",
+                  "allowed": true,
+                  "details": {
+                    "task_phase": "execution",
+                    "has_published_plan": false,
+                    "unfinished_steps_count": 0
+                  }
+                }
+              ],
+              "tool_calls": [
+                "analytics_csv_generate_report"
+              ],
+              "denied_count": 0,
+              "requires_waiting_state": false
+            },
+            "level": "info",
+            "message": "Turn прошёл проверку правил поведения агента.",
+            "timestamp": "2026-06-29T13:41:27.617Z"
+          },
+          {
+            "code": "tool_call_started",
+            "data": {
+              "tool_name": "analytics_csv_generate_report",
+              "tool_call_id": "call_function_op5vgnosq1v8_1"
+            },
+            "level": "info",
+            "message": "Запущен вызов инструмента \"analytics_csv_generate_report\".",
+            "timestamp": "2026-06-29T13:41:27.638Z"
+          },
+          {
+            "code": "tool_execution_planned",
+            "data": {
+              "tools": [
+                {
+                  "tool_name": "analytics_csv_generate_report",
+                  "execution_class": "sequential"
+                }
+              ],
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "segment_count": 1,
+              "total_tool_calls": 1,
+              "parallel_segments": 0,
+              "sequential_segments": 1
+            },
+            "level": "info",
+            "message": "Политика выполнения разложила 1 вызовов на 1 сегментов.",
+            "timestamp": "2026-06-29T13:41:27.638Z"
+          },
+          {
+            "code": "tool_call_completed",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "tool_name": "analytics_csv_generate_report",
+              "is_success": true,
+              "tool_call_id": "call_function_op5vgnosq1v8_1"
+            },
+            "level": "info",
+            "message": "Инструмент \"analytics_csv_generate_report\" завершился успешно.",
+            "timestamp": "2026-06-29T13:41:37.834Z"
+          },
+          {
+            "code": "turn_decision_evaluated",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "outcome": {
+                "kind": "complete",
+                "reason": "terminal_reply",
+                "completion_reason": "assistant_reply"
+              },
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "decisions": [
+                {
+                  "action": "allow_tool_calls",
+                  "reason": "normal_flow",
+                  "allowed": false,
+                  "details": {
+                    "tool_calls_count": 0
+                  }
+                },
+                {
+                  "action": "allow_terminal_reply",
+                  "reason": "normal_flow",
+                  "allowed": true,
+                  "details": {
+                    "task_phase": "execution",
+                    "has_published_plan": false,
+                    "unfinished_steps_count": 0
+                  }
+                },
+                {
+                  "action": "block_completion",
+                  "reason": "normal_flow",
+                  "allowed": true,
+                  "details": {
+                    "unfinished_steps_count": 0
+                  }
+                }
+              ],
+              "tool_calls": [],
+              "denied_count": 1,
+              "requires_waiting_state": false
+            },
+            "level": "warn",
+            "message": "Turn содержит действия, которые требуют guard/repair.",
+            "timestamp": "2026-06-29T13:41:43.869Z"
+          },
+          {
+            "code": "agent_decision_made",
+            "data": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "summary": "**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109 **KPI из сводки:** - Покупок (cart): **39** - Выручка: **325 863,72 ₽** - Средний чек: **8 3…",
+              "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+              "completion_reason": "assistant_reply"
+            },
+            "level": "info",
+            "message": "Агент решил завершить run итоговым ответом.",
+            "timestamp": "2026-06-29T13:41:48.702Z"
+          }
+        ],
+        "platform_prompt_revision": "2026-06-01.1",
+        "prompt_repository_revision": "2026-06-01.1"
+      },
+      "versions": [
+        {
+          "id": "xoTbMC9wLFQZTgjwXh7qZ",
+          "role": "assistant",
+          "kind": "text",
+          "content": "\n**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109\n\n**KPI из сводки:**\n- Покупок (cart): **39**\n- Выручка: **325 863,72 ₽**\n- Средний чек: **8 355,48 ₽**\n- Уникальных покупателей: **36**\n\nФайл содержит **5 листов** с таблицами и графиками: Сводка, Бренды, Категории, Воронка, Динамика. Откройте его в редакторе таблиц Р7 Офис.",
+          "response_timeline": [
+            {
+              "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:0",
+              "kind": "reasoning",
+              "order": 0,
+              "content": "The user wants to generate a sales report from `data_first_1000.csv` in folder 109. I have the `analytics_csv` skill installed with tool `analytics_csv_generate_report`. I should call it directly.\n"
+            },
+            {
+              "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:1",
+              "kind": "tool_group",
+              "order": 1,
+              "status": "completed",
+              "tool_call_ids": [
+                "call_103e2d99216e45c18f81902d",
+                "call_function_op5vgnosq1v8_1"
+              ],
+              "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+            },
+            {
+              "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:2",
+              "kind": "reasoning",
+              "order": 2,
+              "content": "The skill is activated. Now I need to call the `analytics_csv_generate_report` tool with the parameters:\n- directory_id: 109\n- csv_name: \"data_first_1000.csv\""
+            },
+            {
+              "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:3",
+              "kind": "text",
+              "order": 3,
+              "content": "\n**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109\n\n**KPI из сводки:**\n- Покупок (cart): **39**\n- Выручка: **325 863,72 ₽**\n- Средний чек: **8 355,48 ₽**\n- Уникальных покупателей: **36**\n\nФайл содержит **5 листов** с таблицами и графиками: Сводка, Бренды, Категории, Воронка, Динамика. Откройте его в редакторе таблиц Р7 Офис."
+            }
+          ],
+          "tool_calls": [
+            {
+              "id": "call_103e2d99216e45c18f81902d",
+              "name": "skills",
+              "type": "function",
+              "command": "skills activate analytics_csv",
+              "content": "Подключил навык analytics_csv. Инструменты: analytics_csv_generate_report",
+              "arguments": "{\"action\":\"activate\",\"skill_ref\":\"analytics_csv\"}",
+              "sse_events": [
+                {
+                  "data": {
+                    "data": {
+                      "command": "skills activate analytics_csv",
+                      "arguments": {
+                        "action": "activate",
+                        "skill_ref": "analytics_csv"
+                      },
+                      "tool_name": "skills",
+                      "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                      "tool_call_id": "call_103e2d99216e45c18f81902d",
+                      "display_title": "Проверяю активные навыки",
+                      "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                    },
+                    "type": "tool_call_start",
+                    "timestamp": "2026-06-29T13:41:19.817Z",
+                    "session_id": "GI9vDJfmL56wFbce06afd"
+                  },
+                  "event": "tool_call_start",
+                  "received_at": "2026-06-29T13:41:19.817Z"
+                },
+                {
+                  "data": {
+                    "data": {
+                      "result": {
+                        "tools": [
+                          "analytics_csv_generate_report"
+                        ],
+                        "success": true,
+                        "skill_id": "11CVZSP4JnJhdeUe6umTH",
+                        "skill_ref": "analytics_csv",
+                        "skill_name": "analytics_csv",
+                        "added_iterations": 5,
+                        "skill_instructions": "analytics_csv",
+                        "skill_state_marker": {
+                          "type": "skill_activation",
+                          "action": "activated",
+                          "active": true,
+                          "skill_id": "11CVZSP4JnJhdeUe6umTH",
+                          "skill_ref": "analytics_csv",
+                          "skill_name": "analytics_csv"
+                        }
+                      },
+                      "content": "Подключил навык analytics_csv. Инструменты: analytics_csv_generate_report",
+                      "success": true,
+                      "tool_name": "skills",
+                      "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                      "tool_call_id": "call_103e2d99216e45c18f81902d",
+                      "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                    },
+                    "type": "tool_call_result",
+                    "timestamp": "2026-06-29T13:41:19.879Z",
+                    "session_id": "GI9vDJfmL56wFbce06afd"
+                  },
+                  "event": "tool_call_result",
+                  "received_at": "2026-06-29T13:41:19.879Z"
+                }
+              ],
+              "display_title": "Проверяю активные навыки",
+              "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0",
+              "result": {
+                "success": true,
+                "skill_id": "11CVZSP4JnJhdeUe6umTH",
+                "skill_ref": "analytics_csv",
+                "skill_name": "analytics_csv",
+                "skill_instructions": "analytics_csv",
+                "tools": [
+                  "analytics_csv_generate_report"
+                ],
+                "added_iterations": 5,
+                "skill_state_marker": {
+                  "type": "skill_activation",
+                  "action": "activated",
+                  "active": true,
+                  "skill_id": "11CVZSP4JnJhdeUe6umTH",
+                  "skill_ref": "analytics_csv",
+                  "skill_name": "analytics_csv"
+                }
+              },
+              "success": true
+            },
+            {
+              "id": "call_function_op5vgnosq1v8_1",
+              "name": "analytics_csv_generate_report",
+              "type": "function",
+              "command": "analytics_csv_generate_report",
+              "content": "Выполнил analytics csv generate report",
+              "arguments": "{\"csv_name\":\"data_first_1000.csv\",\"directory_id\":109}",
+              "sse_events": [
+                {
+                  "data": {
+                    "data": {
+                      "command": "analytics_csv_generate_report",
+                      "arguments": {
+                        "csv_name": "data_first_1000.csv",
+                        "directory_id": 109
+                      },
+                      "tool_name": "analytics_csv_generate_report",
+                      "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                      "tool_call_id": "call_function_op5vgnosq1v8_1",
+                      "display_title": "Отдаю в analytics csv generate report",
+                      "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                    },
+                    "type": "tool_call_start",
+                    "timestamp": "2026-06-29T13:41:27.638Z",
+                    "session_id": "GI9vDJfmL56wFbce06afd"
+                  },
+                  "event": "tool_call_start",
+                  "received_at": "2026-06-29T13:41:27.638Z"
+                },
+                {
+                  "data": {
+                    "data": {
+                      "result": {
+                        "ok": true,
+                        "sheets": [
+                          {
+                            "name": "Сводка",
+                            "rows": 39
+                          },
+                          {
+                            "name": "Бренды",
+                            "rows": 10
+                          },
+                          {
+                            "name": "Категории",
+                            "rows": 5
+                          },
+                          {
+                            "name": "Воронка",
+                            "rows": 2
+                          },
+                          {
+                            "name": "Динамика",
+                            "rows": 1
+                          }
+                        ],
+                        "summary": {
+                          "revenue": 325863.72,
+                          "avgCheck": 8355.48,
+                          "viewCount": 921,
+                          "uniqueBuyers": 36,
+                          "purchaseCount": 39,
+                          "funnelPurchaseCount": 39
+                        },
+                        "base_url": "https://cddisk.gptz.lad-soft.ru",
+                        "csv_name": "data_first_1000.csv",
+                        "csv_rows": 999,
+                        "warnings": [
+                          "Покупки для сводки/брендов/категорий/динамики: event_type=cart. Воронка: view → purchase."
+                        ],
+                        "operation": "analytics_csv_generate_report",
+                        "agent_stop": true,
+                        "output_name": "sales_report_20260629_1341.xlsx",
+                        "directory_id": 109,
+                        "do_not_retry": true,
+                        "agent_message": "Отчёт «sales_report_20260629_1341.xlsx» создан в папке id=109. Покупок (cart): 39, выручка: 325863.72 руб. Откройте файл в редакторе таблиц Р7 Офис — 5 листов с таблицами и графиками.",
+                        "csv_document_id": 89,
+                        "output_size_bytes": 16670,
+                        "output_document_id": null,
+                        "forbid_followup_tools": [
+                          "analytics_csv_generate_report"
+                        ]
+                      },
+                      "content": "Выполнил analytics csv generate report",
+                      "success": true,
+                      "tool_name": "analytics_csv_generate_report",
+                      "message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+                      "tool_call_id": "call_function_op5vgnosq1v8_1",
+                      "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+                    },
+                    "type": "tool_call_result",
+                    "timestamp": "2026-06-29T13:41:37.834Z",
+                    "session_id": "GI9vDJfmL56wFbce06afd"
+                  },
+                  "event": "tool_call_result",
+                  "received_at": "2026-06-29T13:41:37.834Z"
+                }
+              ],
+              "display_title": "Отдаю в analytics csv generate report",
+              "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0",
+              "result": {
+                "ok": true,
+                "operation": "analytics_csv_generate_report",
+                "base_url": "https://cddisk.gptz.lad-soft.ru",
+                "directory_id": 109,
+                "csv_name": "data_first_1000.csv",
+                "csv_document_id": 89,
+                "csv_rows": 999,
+                "output_name": "sales_report_20260629_1341.xlsx",
+                "output_document_id": null,
+                "output_size_bytes": 16670,
+                "summary": {
+                  "purchaseCount": 39,
+                  "revenue": 325863.72,
+                  "avgCheck": 8355.48,
+                  "uniqueBuyers": 36,
+                  "viewCount": 921,
+                  "funnelPurchaseCount": 39
+                },
+                "sheets": [
+                  {
+                    "name": "Сводка",
+                    "rows": 39
+                  },
+                  {
+                    "name": "Бренды",
+                    "rows": 10
+                  },
+                  {
+                    "name": "Категории",
+                    "rows": 5
+                  },
+                  {
+                    "name": "Воронка",
+                    "rows": 2
+                  },
+                  {
+                    "name": "Динамика",
+                    "rows": 1
+                  }
+                ],
+                "warnings": [
+                  "Покупки для сводки/брендов/категорий/динамики: event_type=cart. Воронка: view → purchase."
+                ],
+                "do_not_retry": true,
+                "agent_stop": true,
+                "forbid_followup_tools": [
+                  "analytics_csv_generate_report"
+                ],
+                "agent_message": "Отчёт «sales_report_20260629_1341.xlsx» создан в папке id=109. Покупок (cart): 39, выручка: 325863.72 руб. Откройте файл в редакторе таблиц Р7 Офис — 5 листов с таблицами и графиками."
+              },
+              "success": true
+            }
+          ],
+          "tool_call_id": null,
+          "attached_files": null,
+          "metadata": {
+            "timestamp": "2026-06-29T13:41:19.880Z",
+            "reasoning": "The user wants to generate a sales report from `data_first_1000.csv` in folder 109. I have the `analytics_csv` skill installed with tool `analytics_csv_generate_report`. I should call it directly.\n\n\nThe skill is activated. Now I need to call the `analytics_csv_generate_report` tool with the parameters:\n- directory_id: 109\n- csv_name: \"data_first_1000.csv\"",
+            "sse_message_id": "xoTbMC9wLFQZTgjwXh7qZ",
+            "response_version": {
+              "run_id": "TvHWUnV6TwUo2a0Axumzx",
+              "group_id": "agent-response:mWpjJYOnFMtQWNCjtxdZa",
+              "regenerated": false,
+              "source_user_message_id": "mWpjJYOnFMtQWNCjtxdZa"
+            },
+            "response_timeline": [
+              {
+                "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:1",
+                "kind": "tool_group",
+                "order": 1,
+                "status": "completed",
+                "tool_call_ids": [
+                  "call_103e2d99216e45c18f81902d",
+                  "call_function_op5vgnosq1v8_1"
+                ],
+                "tool_group_id": "xoTbMC9wLFQZTgjwXh7qZ:Zzg1aqpXcYcVoVwgLyd3P:tool-group:0"
+              },
+              {
+                "id": "xoTbMC9wLFQZTgjwXh7qZ:timeline:3",
+                "kind": "text",
+                "order": 3,
+                "content": "\n**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109\n\n**KPI из сводки:**\n- Покупок (cart): **39**\n- Выручка: **325 863,72 ₽**\n- Средний чек: **8 355,48 ₽**\n- Уникальных покупателей: **36**\n\nФайл содержит **5 листов** с таблицами и графиками: Сводка, Бренды, Категории, Воронка, Динамика. Откройте его в редакторе таблиц Р7 Офис."
+              }
+            ],
+            "response_timeline_last_seq": 62,
+            "usage": {
+              "model_id": "4ohPFvIN0OJ48pZUR2wFk",
+              "model_name": "minimax-M2.7",
+              "cost_amount": 0.0110943,
+              "total_tokens": 35925,
+              "cost_currency": "USD",
+              "prompt_tokens": 35573,
+              "request_count": 3,
+              "completion_tokens": 352,
+              "model_external_id": "MiniMax-M2.7",
+              "request_breakdown": [
+                {
+                  "model_id": "4ohPFvIN0OJ48pZUR2wFk",
+                  "model_name": "minimax-M2.7",
+                  "cost_amount": 0.0082317,
+                  "provider_id": "ZzOYS2LiIoFc3STH0ydrt",
+                  "total_tokens": 26641,
+                  "cost_currency": "USD",
+                  "prompt_tokens": 26375,
+                  "provider_kind": "anthropic",
+                  "provider_name": "MINIMAX-ANTHROPIC",
+                  "request_count": 2,
+                  "completion_tokens": 266,
+                  "model_external_id": "MiniMax-M2.7"
+                },
+                {
+                  "model_id": "4ohPFvIN0OJ48pZUR2wFk",
+                  "model_name": "minimax-M2.7",
+                  "cost_amount": 0.0028626,
+                  "provider_id": "wSNhVDGKcjDCBtS8UNKWy",
+                  "total_tokens": 9284,
+                  "cost_currency": "USD",
+                  "prompt_tokens": 9198,
+                  "provider_kind": "openai-compatible",
+                  "provider_name": "GONKA-AI",
+                  "request_count": 1,
+                  "completion_tokens": 86,
+                  "model_external_id": "MiniMaxAI/MiniMax-M2.7"
+                }
+              ]
+            },
+            "tokens": 35925,
+            "billing": {
+              "mode": "credits",
+              "item_count": 5,
+              "breakdown_raw": {
+                "llm": 0.79879,
+                "web": 0,
+                "runtime": 0.1,
+                "tools_total": 0.1
+              },
+              "charge_status": "committed",
+              "raw_cost_amount": 0.89879,
+              "billed_cost_amount": 1,
+              "billed_cost_currency": "credits",
+              "daily_limit_remaining": 2
+            },
+            "cancelled": false,
+            "iterations": 3,
+            "latency_ms": 32820,
+            "prompt_hash": "a3d30ed51c2445378dbd8fbd7568563c8f7b72fe54aeab62275f09aea35a6aeb",
+            "token_usage": {
+              "total_tokens": 35925,
+              "prompt_tokens": 35573,
+              "completion_tokens": 352
+            },
+            "terminal_status": "completed",
+            "prompt_breakdown": {
+              "items": [
+                {
+                  "key": "sessionTaskContext",
+                  "length": 309,
+                  "reason": "default_enabled",
+                  "included": true,
+                  "priority": 35
+                },
+                {
+                  "key": "promptRepository",
+                  "length": 2548,
+                  "reason": "hard_policy_always_enabled",
+                  "included": true,
+                  "priority": 34
+                },
+                {
+                  "key": "startupOrder",
+                  "length": 2622,
+                  "reason": "hard_policy_always_enabled",
+                  "included": true,
+                  "priority": 110
+                },
+                {
+                  "key": "currentAgent",
+                  "length": 117,
+                  "reason": "hard_policy_always_enabled",
+                  "included": true,
+                  "priority": 30
+                },
+                {
+                  "key": "agentInstruction",
+                  "length": 1627,
+                  "reason": "default_enabled",
+                  "included": true,
+                  "priority": 32
+                },
+                {
+                  "key": "userInfo",
+                  "length": 127,
+                  "reason": "default_enabled",
+                  "included": true,
+                  "priority": 80
+                },
+                {
+                  "key": "memory",
+                  "length": 28,
+                  "reason": "default_enabled",
+                  "included": true,
+                  "priority": 60
+                },
+                {
+                  "key": "skill_catalog",
+                  "length": 552,
+                  "reason": "default_enabled",
+                  "included": true,
+                  "priority": 45
+                }
+              ],
+              "totalLength": 7930
+            },
+            "product_audit_log": [
+              {
+                "code": "run_started",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "source": "user",
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "task_phase": "execution",
+                  "max_iterations": 500,
+                  "request_preview": "Сделай отчёт по продажам из data_first_1000.csv в папке 109"
+                },
+                "level": "info",
+                "message": "Агент начал run по запросу: Сделай отчёт по продажам из data_first_1000.csv в папке 109",
+                "timestamp": "2026-06-29T13:41:15.971Z"
+              },
+              {
+                "code": "context_built",
+                "data": {
+                  "source": "user",
+                  "history_count": 1,
+                  "active_apps_count": 0,
+                  "skill_catalog_count": 2,
+                  "prompt_sections_count": 8
+                },
+                "level": "info",
+                "message": "Контекст агента собран и готов к формированию системного промпта.",
+                "timestamp": "2026-06-29T13:41:16.248Z"
+              },
+              {
+                "code": "prompt_policy_applied",
+                "data": {
+                  "section_reasons": [
+                    {
+                      "key": "sessionTaskContext",
+                      "reason": "default_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "promptRepository",
+                      "reason": "hard_policy_always_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "startupOrder",
+                      "reason": "hard_policy_always_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "currentAgent",
+                      "reason": "hard_policy_always_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "agentInstruction",
+                      "reason": "default_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "userInfo",
+                      "reason": "default_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "skill_catalog",
+                      "reason": "default_enabled",
+                      "included": true
+                    },
+                    {
+                      "key": "memory",
+                      "reason": "default_enabled",
+                      "included": true
+                    }
+                  ],
+                  "disabled_sections": [],
+                  "included_sections": [
+                    "sessionTaskContext",
+                    "promptRepository",
+                    "startupOrder",
+                    "currentAgent",
+                    "agentInstruction",
+                    "userInfo",
+                    "skill_catalog",
+                    "memory"
+                  ],
+                  "total_prompt_length": 16035
+                },
+                "level": "info",
+                "message": "Политика промпта включила 8 секций для текущего run.",
+                "timestamp": "2026-06-29T13:41:16.261Z"
+              },
+              {
+                "code": "turn_decision_evaluated",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "outcome": {
+                    "kind": "continue",
+                    "reason": "tool_round"
+                  },
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "decisions": [
+                    {
+                      "action": "allow_tool_calls",
+                      "reason": "tool_calls_present",
+                      "allowed": true,
+                      "details": {
+                        "tool_calls_count": 1
+                      }
+                    },
+                    {
+                      "action": "allow_terminal_reply",
+                      "reason": "normal_flow",
+                      "allowed": true,
+                      "details": {
+                        "task_phase": "execution",
+                        "has_published_plan": false,
+                        "unfinished_steps_count": 0
+                      }
+                    }
+                  ],
+                  "tool_calls": [
+                    "skills"
+                  ],
+                  "denied_count": 0,
+                  "requires_waiting_state": false
+                },
+                "level": "info",
+                "message": "Turn прошёл проверку правил поведения агента.",
+                "timestamp": "2026-06-29T13:41:19.814Z"
+              },
+              {
+                "code": "tool_call_started",
+                "data": {
+                  "tool_name": "skills",
+                  "tool_call_id": "call_103e2d99216e45c18f81902d"
+                },
+                "level": "info",
+                "message": "Запущен вызов инструмента \"skills\".",
+                "timestamp": "2026-06-29T13:41:19.817Z"
+              },
+              {
+                "code": "tool_execution_planned",
+                "data": {
+                  "tools": [
+                    {
+                      "tool_name": "skills",
+                      "execution_class": "sequential"
+                    }
+                  ],
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "segment_count": 1,
+                  "total_tool_calls": 1,
+                  "parallel_segments": 0,
+                  "sequential_segments": 1
+                },
+                "level": "info",
+                "message": "Политика выполнения разложила 1 вызовов на 1 сегментов.",
+                "timestamp": "2026-06-29T13:41:19.817Z"
+              },
+              {
+                "code": "tool_call_completed",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "tool_name": "skills",
+                  "is_success": true,
+                  "tool_call_id": "call_103e2d99216e45c18f81902d"
+                },
+                "level": "info",
+                "message": "Инструмент \"skills\" завершился успешно.",
+                "timestamp": "2026-06-29T13:41:19.880Z"
+              },
+              {
+                "code": "turn_decision_evaluated",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "outcome": {
+                    "kind": "continue",
+                    "reason": "tool_round"
+                  },
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "decisions": [
+                    {
+                      "action": "allow_tool_calls",
+                      "reason": "tool_calls_present",
+                      "allowed": true,
+                      "details": {
+                        "tool_calls_count": 1
+                      }
+                    },
+                    {
+                      "action": "allow_terminal_reply",
+                      "reason": "normal_flow",
+                      "allowed": true,
+                      "details": {
+                        "task_phase": "execution",
+                        "has_published_plan": false,
+                        "unfinished_steps_count": 0
+                      }
+                    }
+                  ],
+                  "tool_calls": [
+                    "analytics_csv_generate_report"
+                  ],
+                  "denied_count": 0,
+                  "requires_waiting_state": false
+                },
+                "level": "info",
+                "message": "Turn прошёл проверку правил поведения агента.",
+                "timestamp": "2026-06-29T13:41:27.617Z"
+              },
+              {
+                "code": "tool_call_started",
+                "data": {
+                  "tool_name": "analytics_csv_generate_report",
+                  "tool_call_id": "call_function_op5vgnosq1v8_1"
+                },
+                "level": "info",
+                "message": "Запущен вызов инструмента \"analytics_csv_generate_report\".",
+                "timestamp": "2026-06-29T13:41:27.638Z"
+              },
+              {
+                "code": "tool_execution_planned",
+                "data": {
+                  "tools": [
+                    {
+                      "tool_name": "analytics_csv_generate_report",
+                      "execution_class": "sequential"
+                    }
+                  ],
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "segment_count": 1,
+                  "total_tool_calls": 1,
+                  "parallel_segments": 0,
+                  "sequential_segments": 1
+                },
+                "level": "info",
+                "message": "Политика выполнения разложила 1 вызовов на 1 сегментов.",
+                "timestamp": "2026-06-29T13:41:27.638Z"
+              },
+              {
+                "code": "tool_call_completed",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "tool_name": "analytics_csv_generate_report",
+                  "is_success": true,
+                  "tool_call_id": "call_function_op5vgnosq1v8_1"
+                },
+                "level": "info",
+                "message": "Инструмент \"analytics_csv_generate_report\" завершился успешно.",
+                "timestamp": "2026-06-29T13:41:37.834Z"
+              },
+              {
+                "code": "turn_decision_evaluated",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "outcome": {
+                    "kind": "complete",
+                    "reason": "terminal_reply",
+                    "completion_reason": "assistant_reply"
+                  },
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "decisions": [
+                    {
+                      "action": "allow_tool_calls",
+                      "reason": "normal_flow",
+                      "allowed": false,
+                      "details": {
+                        "tool_calls_count": 0
+                      }
+                    },
+                    {
+                      "action": "allow_terminal_reply",
+                      "reason": "normal_flow",
+                      "allowed": true,
+                      "details": {
+                        "task_phase": "execution",
+                        "has_published_plan": false,
+                        "unfinished_steps_count": 0
+                      }
+                    },
+                    {
+                      "action": "block_completion",
+                      "reason": "normal_flow",
+                      "allowed": true,
+                      "details": {
+                        "unfinished_steps_count": 0
+                      }
+                    }
+                  ],
+                  "tool_calls": [],
+                  "denied_count": 1,
+                  "requires_waiting_state": false
+                },
+                "level": "warn",
+                "message": "Turn содержит действия, которые требуют guard/repair.",
+                "timestamp": "2026-06-29T13:41:43.869Z"
+              },
+              {
+                "code": "agent_decision_made",
+                "data": {
+                  "run_id": "TvHWUnV6TwUo2a0Axumzx",
+                  "summary": "**Отчёт создан:** `sales_report_20260629_1341.xlsx` в папке id=109 **KPI из сводки:** - Покупок (cart): **39** - Выручка: **325 863,72 ₽** - Средний чек: **8 3…",
+                  "task_id": "Zzg1aqpXcYcVoVwgLyd3P",
+                  "completion_reason": "assistant_reply"
+                },
+                "level": "info",
+                "message": "Агент решил завершить run итоговым ответом.",
+                "timestamp": "2026-06-29T13:41:48.702Z"
+              }
+            ],
+            "platform_prompt_revision": "2026-06-01.1",
+            "prompt_repository_revision": "2026-06-01.1"
+          }
+        }
+      ]
+    }
+  ],
+  "context_usage": {
+    "source": "history_load",
+    "approx_history_tokens": 2532,
+    "message_count": 8,
+    "fresh_history_tokens": 2532,
+    "fresh_message_count": 8,
+    "fresh_history_budget_tokens": 101238,
+    "compacted_summary_tokens": 0,
+    "compacted_summary_message_count": 0,
+    "history_token_limit": 126548,
+    "compaction_trigger_tokens": 101238,
+    "effective_limit_tokens": 126548,
+    "prompt_token_budget": 180784,
+    "response_token_limit": 8192,
+    "system_prompt_token_reserve": 0,
+    "tool_schema_token_reserve": 0,
+    "safety_token_reserve": 1024,
+    "fill_ratio": 0.02501037159959699,
+    "total_fill_ratio": 0.02501037159959699,
+    "resolved_model_id": "4ohPFvIN0OJ48pZUR2wFk",
+    "model_context_window_tokens": 190000,
+    "is_approximate": true
+  },
+  "pagination": {
+    "page": 1,
+    "size": 99999,
+    "total": 2
+  }
+}

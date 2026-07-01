@@ -1,0 +1,7 @@
+{
+  "R7_DISK_BASE_URL": "https://cddisk.example.ru",
+  "R7_DISK_LOGIN": "your-login",
+  "R7_DISK_PASSWORD": "your-password",
+  "ANALYTICS_CSV_DIRECTORY_ID": 109,
+  "ANALYTICS_CSV_DEFAULT_INPUT_NAME": "data_first_1000.csv"
+}
