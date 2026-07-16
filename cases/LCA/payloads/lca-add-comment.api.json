@@ -1,0 +1,65 @@
+{
+  "skill": "lca-add-comment",
+  "title": "lca-add-comment",
+  "name": "lca-add-comment",
+  "description": "Черновик комментария в чате → r7_add_comment только после одобрения; hint lca-add-comment.",
+  "detailed_description": "Добавь комментарий рецензента к открытому Word.\n\n## Шаг A\nПокажи текст комментария в чате и к чему он относится (выделение / якорь). **Без** `r7_add_comment`.\n\nСпроси: «Добавить комментарий в документ? („да“ / „добавь“ / „одобряю“)».\n\n## Шаг B\nТолько после явного согласия: tool **`r7_add_comment`** с `{ text }`. Один комментарий за ответ, если не просят больше.\n\nКраткое подтверждение без fence. Только Word.",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.1.0",
+  "tools": [
+    {
+      "name": "r7_add_comment",
+      "description": "Комментарий рецензента в Word.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Текст комментария"
+            }
+          },
+          "required": [
+            "text"
+          ]
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\n  const p = params && typeof params === \"object\" ? params : {};\n  let text = \"\";\n  if (typeof p.text === \"string\") text = p.text.trim();\n  else if (typeof p.comment === \"string\") text = p.comment.trim();\n  else if (typeof params === \"string\") text = params.trim();\n  if (!text) return { ok: false, error: \"text обязателен\" };\n  return { ok: true, type: \"add_comment\", text: text, data: { text: text } };\n}\n",
+      "id": "4zxqROkZStlcjHFATkl6U"
+    }
+  ]
+}

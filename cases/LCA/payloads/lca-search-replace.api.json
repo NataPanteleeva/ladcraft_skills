@@ -1,0 +1,74 @@
+{
+  "skill": "lca-search-replace",
+  "title": "lca-search-replace",
+  "name": "lca-search-replace",
+  "description": "Поиск и замена после явного согласия пользователя (исправь все / исправь N); tool r7_search_replace; hint lca-search-replace.",
+  "detailed_description": "Выполни замены в открытом документе **только после явного согласия**. Плагин применяет tool_calls автоматически.\n\n## Когда вызывать этот навык\n\nТолько если пользователь уже видел список и написал одно из:\n\n- **исправь все** / **да, исправь** / **исправь опечатки**\n- **исправь 1, 3** / **только 2** — номера из таблицы предыдущего сообщения\n- конкретную пару «замени X на Y»\n\nЕсли согласия нет (только «проверь») — **не** этот навык; нужна проверка через `lca-proofread`.\n\n## Primary\n\nВызови tool **`r7_search_replace`** (`search`, `replace`, `matchCase` опц.).\n\n- «исправь все» → пары из **последней** таблицы замечаний в чате (до **15** вызовов).\n- «исправь 1, 3» → только строки с этими №.\n- Одна пара по запросу → один вызов.\n\n## Ответ пользователю (без дублей)\n\nПосле tool_calls — **коротко**, **без второй таблицы** и без повторения полного списка:\n\n- Одна фраза: «Внёс N замен в документ» (или «Внёс замены по пунктам 1, 3»).\n- Не дублируй markdown-таблицу «Было / Стало».\n- Не пиши отдельный блок «Все опечатки успешно исправлены» + ещё одна таблица.\n\nСписок замечаний уже был в предыдущем ходе — достаточно статуса apply.\n\n## Оформление\n\n`SearchAndReplace` — plain text. Для HTML-оформления → `lca-rewrite`.\n\n## Fallback\n\nТолько если tool недоступен — fence ```r7.task``` с search_replace.\n\n## r7.event\n\nПосле скрытого `apply_result`: **не** повторяй список замен и **не** рисуй таблицу снова. Максимум: «Готово, правки применены» (если ещё нужен видимый ack). Сырой JSON event не показывай.",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.1.0",
+  "tools": [
+    {
+      "name": "r7_search_replace",
+      "description": "SearchAndReplace в открытом документе R7.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "search": {
+              "type": "string",
+              "description": "Что искать"
+            },
+            "replace": {
+              "type": "string",
+              "description": "На что заменить"
+            },
+            "matchCase": {
+              "type": "boolean",
+              "description": "Учитывать регистр"
+            }
+          },
+          "required": [
+            "search",
+            "replace"
+          ]
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\n  const p = params && typeof params === \"object\" ? params : {};\n  const search = typeof p.search === \"string\" ? p.search : \"\";\n  const replace =\n    typeof p.replace === \"string\"\n      ? p.replace\n      : p.replace === undefined\n        ? null\n        : String(p.replace);\n  if (!search || replace === null) {\n    return { ok: false, error: \"search и replace обязательны\" };\n  }\n  const matchCase = typeof p.matchCase === \"boolean\" ? p.matchCase : false;\n  return {\n    ok: true,\n    type: \"search_replace\",\n    search: search,\n    replace: replace,\n    matchCase: matchCase,\n    data: { search: search, replace: replace, matchCase: matchCase }\n  };\n}\n",
+      "id": "7s8_sHSQcqQOdtDjvTj01"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "agent_name": "Лингвистическая проверка текстов (LCA)",
+  "plugin": "cases/plugin/ladcraft-r7_new",
+  "tz": "5_agent_lingvisticheskaya_proverka_tekstov.docx",
+  "agentId": "f5BwCaKDeDDG71zHJPvid",
+  "primaryWorkspaceId": "Jo8SaVDwNBsRe9bPM4Z1k",
+  "modelId": "4ohPFvIN0OJ48pZUR2wFk",
+  "skillBindings": {
+    "lca-analyze": {
+      "app_id": "4DiaVNvLdW7onc3gRui63",
+      "installed_application_id": "vtstyfEzTDHHxxDMgUIHB",
+      "version": "1.0.0",
+      "tools": []
+    },
+    "lca-proofread": {
+      "app_id": "VlCmY241iOBEHNY4MpsIt",
+      "installed_application_id": "VzvQNhhJK4XrHN6NOEvpg",
+      "version": "1.0.0",
+      "tools": [
+        "r7_add_comment"
+      ]
+    },
+    "lca-search-replace": {
+      "app_id": "KVUxZhcRWEIVCaFrz1ULY",
+      "installed_application_id": "dHuDZJxeqUT5Buy9OMxEg",
+      "version": "1.0.0",
+      "tools": [
+        "r7_search_replace"
+      ]
+    },
+    "lca-rewrite": {
+      "app_id": "L5j3OgyUKj8ZGuhS3mIPC",
+      "installed_application_id": "UGZ1DV2REvlle0gi4HjpD",
+      "version": "1.0.0",
+      "tools": [
+        "r7_replace_selection",
+        "r7_paste"
+      ]
+    },
+    "lca-chat": {
+      "app_id": "xknIBPMrgRtWG88f5jdpR",
+      "installed_application_id": "yMR5m83coH6uPPEtv6mwF",
+      "version": "1.0.0",
+      "tools": [
+        "r7_paste",
+        "r7_paste_text"
+      ]
+    },
+    "lca-generate": {
+      "app_id": "7rq2Zq6tdxTOVppcuLAlk",
+      "installed_application_id": "nx_yawfEC_ehholAB_UuH",
+      "version": "1.0.0",
+      "tools": [
+        "r7_paste",
+        "r7_paste_text"
+      ]
+    },
+    "lca-add-comment": {
+      "app_id": "FBwI3FA0yL2sgMx8LV4gx",
+      "installed_application_id": "Ig5DiAJqmWiwGI1MutyYp",
+      "version": "1.0.0",
+      "tools": [
+        "r7_add_comment"
+      ]
+    },
+    "lca-cell": {
+      "app_id": "3fneoqEJj0Kkp0jTbQFH7",
+      "installed_application_id": "ddG0wVYW9utVrfa8WB5N9",
+      "version": "1.0.0",
+      "tools": [
+        "r7_cell_paste"
+      ]
+    }
+  },
+  "publishedAt": "2026-07-15T14:11:59.748Z"
+}

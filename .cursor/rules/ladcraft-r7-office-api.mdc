@@ -1,0 +1,40 @@
+---
+description: API редактора R7 Office (Word/Cell), плагин Asc.plugin, Р7-Диск REST, r7.task. Применять при разработке плагина ladcraft-r7, навыков r7-export/r7-docx-render/r7-disk-api и любой интеграции с открытым документом в R7.
+alwaysApply: false
+---
+
+# R7 Office API — где смотреть
+
+**Единый справочник (общий для всех кейсов):**  
+[`cases/knowledge-base/r7-api-handoff/`](../../cases/knowledge-base/r7-api-handoff/) — индекс [`README.md`](../../cases/knowledge-base/r7-api-handoff/README.md).
+
+Не класть в папку одного навыка: материал относится к плагину и нескольким навыкам.
+
+## Порядок чтения по задаче
+
+| Задача | Файл |
+|--------|------|
+| Архитектура слоёв (редактор / плагин / диск) | [`01-architecture.md`](../../cases/knowledge-base/r7-api-handoff/01-architecture.md) |
+| Word: `Api`, `executeMethod`, Document Builder | [`02-documents-word.md`](../../cases/knowledge-base/r7-api-handoff/02-documents-word.md) |
+| Cell / таблицы | [`03-tables-cell.md`](../../cases/knowledge-base/r7-api-handoff/03-tables-cell.md) |
+| REST Р7-Диск (навыки, disk-ref) | [`04-disk-api.md`](../../cases/knowledge-base/r7-api-handoff/04-disk-api.md) |
+| Что поддержано на целевой сборке R7 | [`05-method-availability.md`](../../cases/knowledge-base/r7-api-handoff/05-method-availability.md) |
+| VBA→R7, паттерны конвертации | [`06-conversion-patterns.md`](../../cases/knowledge-base/r7-api-handoff/06-conversion-patterns.md) |
+| Плагин: `callCommand`, `r7.task`, вставка | [`07-plugin-integration.md`](../../cases/knowledge-base/r7-api-handoff/07-plugin-integration.md) |
+| **Desktop Word: факт. прогон API (каноны)** | [`08-desktop-word-probe-results.md`](../../cases/knowledge-base/r7-api-handoff/08-desktop-word-probe-results.md) |
+| **Desktop Word: форматирование (чтение/вставка)** | [`09-desktop-word-formatting.md`](../../cases/knowledge-base/r7-api-handoff/09-desktop-word-formatting.md) |
+| Плагин LCA (будущий) | [`cases/plugin/ladcraft-r7_LCA/AGENTS.md`](../../cases/plugin/ladcraft-r7_LCA/AGENTS.md) |
+
+## Не путать с
+
+- **Контракт передачи плагин → агент** — `.cursor/rules/ladcraft-r7-plugin-transfer.mdc`, `cases/doc_compare/docs/r7-plugin-data-contract.md`
+- **Канон Ladcraft (формат навыков)** — `<repo>/.pi/ladcraft-docs/`
+- **Skill-level справочник Диска в навыке** — `cases/r7-disk-api/reference.md` (краткая таблица эндпоинтов для tool-ов; полный контекст — `04-disk-api.md` в handoff)
+
+## Ключевой инвариант
+
+```
+R7-Диск (REST)  ≠  Открытый документ в редакторе (executeMethod + callCommand)
+```
+
+Плагин редактора не вызывает REST диска для операций над **открытым** файлом — это разные слои (см. `01-architecture.md`).

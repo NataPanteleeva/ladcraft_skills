@@ -1,0 +1,62 @@
+{
+  "skill": "lca-cell",
+  "title": "lca-cell",
+  "name": "lca-cell",
+  "description": "Предпросмотр значений ячеек в чате → r7_cell_paste только после одобрения; hint lca-cell.",
+  "detailed_description": "Заполни ячейки Cell.\n\n## Шаг A\nПокажи таблицу/список пар адрес → значение в чате. **Без** `r7_cell_paste`.\n\nСпроси: «Записать эти значения в таблицу? („да“ / „вставь“ / „одобряю“)».\n\n## Шаг B\nТолько после согласия: **`r7_cell_paste`** с объектом `{ \"A1\": \"…\", \"B2\": 42 }` (≤200 адресов).\nТолько изменяемые ячейки. Word → другие навыки LCA.",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.1.0",
+  "tools": [
+    {
+      "name": "r7_cell_paste",
+      "description": "Запись значений в ячейки Cell.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "data": {
+              "type": "object",
+              "description": "Карта A1 → значение"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\n  const p = params && typeof params === \"object\" ? params : {};\n  let data = p.data && typeof p.data === \"object\" && !Array.isArray(p.data) ? p.data : null;\n  if (!data) {\n    const copy = {};\n    const keys = Object.keys(p);\n    for (let i = 0; i < keys.length; i++) {\n      const k = keys[i];\n      if (k === \"ok\" || k === \"type\") continue;\n      if (/^[A-Za-z]+[0-9]+$/.test(k)) copy[k] = p[k];\n    }\n    if (Object.keys(copy).length) data = copy;\n  }\n  if (!data || !Object.keys(data).length) {\n    return { ok: false, error: \"нужна карта ячеек A1..\" };\n  }\n  if (Object.keys(data).length > 200) {\n    return { ok: false, error: \"не более 200 ячеек за вызов\" };\n  }\n  return { ok: true, type: \"cell_paste\", data: data };\n}\n",
+      "id": "UaNpwqM5dciZ8kuK4lYhN"
+    }
+  ]
+}

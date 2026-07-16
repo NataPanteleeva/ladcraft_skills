@@ -1,0 +1,118 @@
+{
+  "skill": "lca-generate",
+  "title": "lca-generate",
+  "name": "lca-generate",
+  "description": "Генерация текста (К-06): сначала черновик в чате, вставка r7_paste только после одобрения; hint lca-generate.",
+  "detailed_description": "Ты навык **генерации текста** (ТЗ К-06 / С-01). Опирайся на БЗ и стилистические правила Заказчика (вид документа из запроса).\n\n## Правила из workspace\n\n1. `bash head -c 50000 /workspace/methodology/contexts.md` → slug.\n2. `bash head -c 120000 /workspace/rules/{slug}/RULES.md`\n3. `bash head -c 80000 /workspace/style/{slug}/sample.md` (если есть).\n4. Опционально: `/workspace/checklists/generate.md` и `/workspace/methodology/S01_generate.md`.\n\nОбразец — ориентир структуры/тона, не копируй вымышленные ФИО/номера как факты пользователя.\n\n## Шаг A — черновик (всегда)\n\n1. Сформируй текст по заданию.\n2. Покажи **полный** результат в чате под заголовком **Черновик:**.\n3. **Не** вызывай `r7_paste` / `r7_paste_text` в этом ходе (даже если просят «сразу в документ»).\n4. **Не** разжёвывай правила стиля / методику, пока пользователь не попросит объяснить.\n5. Спроси:\n\n```\nВставить текст в документ (у курсора)?\n• «вставь» / «да» / «одобряю» — вставлю\n• «измени …» / «другой стиль …» — правлю черновик без вставки\n```\n\nУточнения стиля/содержания — правка **этого** черновика, без tools.\n\n## Шаг B — вставка после одобрения\n\nТолько на явное **вставь** / **да** / **одобряю** / **в документ** / **примени**:\n\n- В tool передай **дословно** последний **Черновик** из чата, не текст из `[Контекст R7: …]` текущего сообщения.\n- HTML → **`r7_paste`**\n- Plain → **`r7_paste_text`**\n\nКраткий статус. Не используй fence ```r7.task``` как primary. После ```r7.event``` не повторяй ту же вставку.",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.1.1",
+  "tools": [
+    {
+      "name": "r7_paste",
+      "description": "Вставка сгенерированного HTML у курсора.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "html": {
+              "type": "string"
+            },
+            "data": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\n  const p = params && typeof params === \"object\" ? params : {};\n  let html = \"\";\n  if (typeof params === \"string\") html = params;\n  else if (typeof p.html === \"string\") html = p.html;\n  else if (typeof p.data === \"string\") html = p.data;\n  else if (typeof p.text === \"string\") html = p.text;\n  html = String(html).trim();\n  if (!html) return { ok: false, error: \"html обязателен\" };\n  return { ok: true, type: \"paste\", data: html };\n}\n",
+      "id": "Of1YbgiTxIYZHJvBwYHK4"
+    },
+    {
+      "name": "r7_paste_text",
+      "description": "Вставка сгенерированного plain text у курсора.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "data": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\n  const p = params && typeof params === \"object\" ? params : {};\n  let text = \"\";\n  if (typeof params === \"string\") text = params;\n  else if (typeof p.text === \"string\") text = p.text;\n  else if (typeof p.data === \"string\") text = p.data;\n  text = String(text);\n  if (!text) return { ok: false, error: \"text обязателен\" };\n  return { ok: true, type: \"paste_text\", data: text };\n}\n",
+      "id": "DFTXITiR4eBq0vOy0Iga5"
+    }
+  ]
+}
