@@ -1,4 +1,11 @@
 import type { DocumentContextState } from "../transfer/context-sync";
+import type { EditorType } from "../config";
+import {
+  resolveActionButtons,
+  resolveActionTarget,
+  type ActionButtonSpec,
+  type ActionId,
+} from "../apply/action-buttons";
 import {
   fillAssistantWorkingBody,
   isAssistantWorkingPlaceholder,
@@ -29,6 +36,15 @@ let stickToBottom = true;
 let chatInputDraft = "";
 let userIsScrolling = false;
 let scrollIdleTimer: ReturnType<typeof setTimeout> | null = null;
+/** V4 action panel open state (persists across patch). */
+let actionPanelOpen = false;
+let lastAutoOpenFingerprint: string | null = null;
+/** Top menu panel (nav buttons). */
+let chromePanelOpen = false;
+/** Top status panel (agent / VFS info). */
+let statusPanelOpen = false;
+/** Latest chat state for action-tail toggle without stale closure. */
+let lastChatState: ChatViewState | null = null;
 
 export interface ChatMessage {
   id: string;
@@ -60,6 +76,7 @@ export interface ChatViewState {
   pluginVersion?: string;
   /** disk-ref diagnostic (id source, Asc.plugin.info keys). */
   diskDebug?: string;
+  editorType?: EditorType;
 }
 
 export interface ChatViewCallbacks {
@@ -68,6 +85,8 @@ export interface ChatViewCallbacks {
   onBack: () => void;
   onLogout: () => void;
   onRefreshContext?: () => Promise<void>;
+  /** Local Asc / download from action bar (no agent). */
+  onAction?: (actionId: ActionId) => Promise<void>;
 }
 
 interface ChatViewContext {
@@ -100,6 +119,10 @@ export function resetChatScroll(): void {
   stickToBottom = true;
   chatInputDraft = "";
   userIsScrolling = false;
+  actionPanelOpen = false;
+  chromePanelOpen = false;
+  statusPanelOpen = false;
+  lastAutoOpenFingerprint = null;
   if (scrollIdleTimer != null) {
     clearTimeout(scrollIdleTimer);
     scrollIdleTimer = null;
@@ -163,34 +186,105 @@ function mountChatView(
   root.appendChild(panel);
   viewContexts.set(panel, { callbacks });
 
-  const toolbar = el("div", "toolbar");
-  const backBtn = el("button", "secondary");
-  backBtn.textContent = "Назад";
-  backBtn.onclick = () => callbacks.onBack();
-  toolbar.appendChild(backBtn);
+  // Two badges: status (info) + menu (nav buttons) — same pattern as bottom «Действия»
+  const chromeWrap = el("div", "chrome-wrap");
+  chromeWrap.setAttribute("data-chat-chrome-wrap", "1");
 
-  const logoutBtn = el("button", "secondary");
-  logoutBtn.textContent = "Выйти";
+  const badgeRow = el("div", "chrome-badge-row");
+
+  const chromeTail = document.createElement("button");
+  chromeTail.type = "button";
+  chromeTail.className = "chrome-tail chrome-tail-menu";
+  chromeTail.setAttribute("data-chrome-tail", "1");
+  chromeTail.title = "Меню: назад, выход, синхронизация";
+  chromeTail.innerHTML = '<span class="action-tail-dot"></span>Меню ▾';
+  chromeTail.onclick = (e) => {
+    e.preventDefault();
+    chromePanelOpen = !chromePanelOpen;
+    if (chromePanelOpen) statusPanelOpen = false;
+    syncChromePanelsOpen(panel, lastChatState);
+  };
+  badgeRow.appendChild(chromeTail);
+
+  const statusTail = document.createElement("button");
+  statusTail.type = "button";
+  statusTail.className = "chrome-tail chrome-tail-status";
+  statusTail.setAttribute("data-status-tail", "1");
+  statusTail.title = "Статус";
+  statusTail.innerHTML = '<span class="action-tail-dot"></span>Статус ▾';
+  statusTail.onclick = (e) => {
+    e.preventDefault();
+    statusPanelOpen = !statusPanelOpen;
+    if (statusPanelOpen) chromePanelOpen = false;
+    syncChromePanelsOpen(panel, lastChatState);
+  };
+  badgeRow.appendChild(statusTail);
+  chromeWrap.appendChild(badgeRow);
+
+  const chromePanel = el("div", "chrome-slide-panel chrome-menu-panel");
+  chromePanel.setAttribute("data-chrome-panel", "1");
+
+  const chrome = el("div", "chrome-compact");
+  chrome.setAttribute("data-chat-chrome", "1");
+
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.className = "chrome-ico chrome-ico-back";
+  backBtn.title = "Назад";
+  backBtn.setAttribute("aria-label", "Назад");
+  backBtn.innerHTML =
+    '<svg class="chrome-ico-svg chrome-ico-svg-back" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path fill="currentColor" d="M19.5 10.4H8.86l4.47-4.47a1.4 1.4 0 1 0-1.98-1.98L4.4 10.9a1.4 1.4 0 0 0 0 1.98l7.0 6.95a1.4 1.4 0 1 0 1.98-1.98l-4.47-4.45H19.5a1.4 1.4 0 1 0 0-2.8z"/>' +
+    "</svg>";
+  backBtn.onclick = () => callbacks.onBack();
+  chrome.appendChild(backBtn);
+
+  const logoutBtn = document.createElement("button");
+  logoutBtn.type = "button";
+  logoutBtn.className = "chrome-ico chrome-ico-exit";
+  logoutBtn.title = "Выйти";
+  logoutBtn.setAttribute("aria-label", "Выйти");
+  logoutBtn.innerHTML =
+    '<svg class="chrome-ico-svg" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path fill="currentColor" d="M10 3a1 1 0 0 0-1 1v4h2V5h8v14h-8v-3H9v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H10zm-1.7 7.3L5.6 13H14v2H5.6l2.7 2.7-1.4 1.4L1.8 14l4.8-4.8 1.4 1.4z"/>' +
+    "</svg>";
   logoutBtn.onclick = () => callbacks.onLogout();
-  toolbar.appendChild(logoutBtn);
+  chrome.appendChild(logoutBtn);
 
   if (callbacks.onRefreshContext) {
     const syncBtn = document.createElement("button");
-    syncBtn.className = "secondary sync-btn";
+    syncBtn.type = "button";
+    syncBtn.className = "chrome-ico sync-btn";
     syncBtn.setAttribute("data-chat-sync", "1");
+    syncBtn.title = "Синхр. документ";
+    syncBtn.setAttribute("aria-label", "Синхр. документ");
+    syncBtn.innerHTML =
+      '<svg class="chrome-ico-svg chrome-ico-svg-sync" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<path stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" ' +
+      'd="M20.2 12a8.2 8.2 0 0 0-13.9-5.9M5.2 3.8V8h4.2"/>' +
+      '<path stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" ' +
+      'd="M3.8 12a8.2 8.2 0 0 0 13.9 5.9M18.8 20.2V16h-4.2"/>' +
+      "</svg>";
     syncBtn.onclick = () => void callbacks.onRefreshContext?.();
-    toolbar.appendChild(syncBtn);
+    chrome.appendChild(syncBtn);
   }
 
-  panel.appendChild(toolbar);
+  chromePanel.appendChild(chrome);
+  chromeWrap.appendChild(chromePanel);
 
-  const agentBar = el("div", "status-bar");
-  agentBar.setAttribute("data-chat-agent", "1");
-  panel.appendChild(agentBar);
-
-  const statusBar = el("div", "status-bar");
-  statusBar.setAttribute("data-chat-status", "1");
-  panel.appendChild(statusBar);
+  const statusPanel = el("div", "chrome-slide-panel chrome-status-panel");
+  statusPanel.setAttribute("data-status-panel", "1");
+  const info = el("div", "chrome-info");
+  info.setAttribute("data-chat-info", "1");
+  const line = el("div", "chrome-line");
+  line.setAttribute("data-chat-info-line", "1");
+  const detail = el("div", "chrome-detail");
+  detail.setAttribute("data-chat-info-detail", "1");
+  info.appendChild(line);
+  info.appendChild(detail);
+  statusPanel.appendChild(info);
+  chromeWrap.appendChild(statusPanel);
+  panel.appendChild(chromeWrap);
 
   const debugBar = el("div", "disk-debug-bar");
   debugBar.setAttribute("data-chat-disk-debug", "1");
@@ -201,12 +295,46 @@ function mountChatView(
   bindMessagesScroll(messagesEl);
   panel.appendChild(messagesEl);
 
-  const inputRow = el("div", "stack");
+  const inputRow = el("div", "composer-wrap");
   inputRow.setAttribute("data-chat-input-row", "1");
+
+  const actionTail = document.createElement("button");
+  actionTail.type = "button";
+  actionTail.className = "action-tail";
+  actionTail.setAttribute("data-action-tail", "1");
+  actionTail.title = "Действия с последним ответом ИИ";
+  actionTail.innerHTML = '<span class="action-tail-dot"></span>Действия ▴';
+  actionTail.style.display = "none";
+  actionTail.onclick = (e) => {
+    e.preventDefault();
+    actionPanelOpen = !actionPanelOpen;
+    const st = lastChatState;
+    const ctx = viewContexts.get(panel);
+    if (st && ctx) patchActionPanel(panel, st, ctx.callbacks);
+  };
+  inputRow.appendChild(actionTail);
+
+  const actionPanel = el("div", "action-v4-panel");
+  actionPanel.setAttribute("data-action-panel", "1");
+  inputRow.appendChild(actionPanel);
 
   const textarea = document.createElement("textarea");
   textarea.id = "chatInput";
   textarea.onkeydown = (e) => {
+    if (e.key === "Escape" && (actionPanelOpen || chromePanelOpen || statusPanelOpen)) {
+      if (actionPanelOpen) {
+        actionPanelOpen = false;
+        const st = lastChatState;
+        const ctx = viewContexts.get(panel);
+        if (st && ctx) patchActionPanel(panel, st, ctx.callbacks);
+      }
+      if (chromePanelOpen || statusPanelOpen) {
+        chromePanelOpen = false;
+        statusPanelOpen = false;
+        syncChromePanelsOpen(panel, lastChatState);
+      }
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendBtn.click();
@@ -230,7 +358,7 @@ function mountChatView(
 
   syncMessagesList(messagesEl, state.messages, callbacks);
 
-  patchChrome(panel, state);
+  patchChrome(panel, state, callbacks);
   applyMessagesScroll(messagesEl, previousScrollTop);
 }
 
@@ -254,27 +382,41 @@ function patchChatView(
     ? syncMessagesList(messagesEl, state.messages, callbacks)
     : false;
 
-  patchChrome(shell, state);
+  patchChrome(shell, state, callbacks);
 
   if (messagesEl && messagesChanged) {
     applyMessagesScroll(messagesEl, previousScrollTop);
   }
 }
 
-function patchChrome(shell: HTMLElement, state: ChatViewState): void {
-  const agentBar = shell.querySelector("[data-chat-agent]");
-  if (agentBar) {
-    const ver = state.pluginVersion ? ` · v${state.pluginVersion}` : "";
-    const labelSpan = document.createElement("span");
-    labelSpan.className = "agent-label";
-    labelSpan.textContent = state.agentLabel;
-    agentBar.replaceChildren();
-    agentBar.append("Агент: ", labelSpan, ver);
+function patchChrome(
+  shell: HTMLElement,
+  state: ChatViewState,
+  callbacks?: ChatViewCallbacks,
+): void {
+  lastChatState = state;
+  const line = shell.querySelector("[data-chat-info-line]");
+  const detail = shell.querySelector("[data-chat-info-detail]");
+  const shortAgent = shortenAgentLabel(state.agentLabel);
+  const ctxNote = formatContextNote(state.contextState, state.contextError, state.diskRef);
+  const statusShort = truncateStatus(state.status);
+  if (line) {
+    line.textContent = `${shortAgent} · ${statusShort}${ctxNote ? ` · ${ctxNote.replace(/^\s*[·•]\s*/, "")}` : ""}`;
   }
-
-  const statusBar = shell.querySelector("[data-chat-status]");
-  if (statusBar) {
-    statusBar.textContent = `${state.status}${formatContextNote(state.contextState, state.contextError, state.diskRef)}`;
+  if (detail) {
+    const ver = state.pluginVersion ? `v${state.pluginVersion}` : "";
+    detail.innerHTML = "";
+    const rows = [
+      `Агент: ${state.agentLabel}`,
+      ver ? `Плагин ${ver}` : "",
+      `Статус: ${state.status}`,
+      ctxNote ? `Контекст:${ctxNote}` : "",
+    ].filter(Boolean);
+    for (const row of rows) {
+      const p = document.createElement("div");
+      p.textContent = row;
+      detail.appendChild(p);
+    }
   }
 
   const debugBar = shell.querySelector("[data-chat-disk-debug]");
@@ -284,11 +426,15 @@ function patchChrome(shell: HTMLElement, state: ChatViewState): void {
 
   const syncBtn = shell.querySelector("[data-chat-sync]") as HTMLButtonElement | null;
   if (syncBtn) {
-    syncBtn.textContent = state.diskRef ? "Обновить контекст" : "Синхр. документ";
+    const title = state.diskRef ? "Обновить контекст" : "Синхр. документ";
+    syncBtn.title = title;
+    syncBtn.setAttribute("aria-label", title);
     syncBtn.disabled = state.contextState === "syncing" || state.isSending;
     syncBtn.classList.toggle("dirty", state.contextState === "dirty");
     syncBtn.classList.toggle("synced", state.contextState === "synced");
   }
+
+  syncChromePanelsOpen(shell, state);
 
   const textarea = shell.querySelector("#chatInput") as HTMLTextAreaElement | null;
   if (textarea) {
@@ -308,6 +454,129 @@ function patchChrome(shell: HTMLElement, state: ChatViewState): void {
     sendBtn.textContent = state.isSending ? "Отправка..." : "Отправить";
     sendBtn.disabled = !state.chatReady || state.isSending;
   }
+
+  if (callbacks) patchActionPanel(shell, state, callbacks);
+}
+
+function syncChromePanelsOpen(shell: HTMLElement, state: ChatViewState | null): void {
+  const statusTail = shell.querySelector("[data-status-tail]") as HTMLElement | null;
+  const statusPanel = shell.querySelector("[data-status-panel]") as HTMLElement | null;
+  const menuTail = shell.querySelector("[data-chrome-tail]") as HTMLElement | null;
+  const menuPanel = shell.querySelector("[data-chrome-panel]") as HTMLElement | null;
+
+  if (statusPanel) statusPanel.classList.toggle("open", statusPanelOpen);
+  if (menuPanel) menuPanel.classList.toggle("open", chromePanelOpen);
+
+  if (statusTail) {
+    statusTail.classList.toggle("open", statusPanelOpen);
+    statusTail.setAttribute("aria-expanded", statusPanelOpen ? "true" : "false");
+    const short =
+      state != null
+        ? `${shortenAgentLabel(state.agentLabel)} · ${truncateStatus(state.status)}`
+        : "Статус";
+    const arrow = statusPanelOpen ? "▴" : "▾";
+    statusTail.innerHTML = `<span class="action-tail-dot"></span>${escapeHtmlLite(short)} ${arrow}`;
+    statusTail.title = statusPanelOpen ? "Свернуть статус" : "Показать статус и контекст";
+  }
+
+  if (menuTail) {
+    menuTail.classList.toggle("open", chromePanelOpen);
+    menuTail.setAttribute("aria-expanded", chromePanelOpen ? "true" : "false");
+    const dirty = state?.contextState === "dirty";
+    const syncing = state?.contextState === "syncing";
+    menuTail.classList.toggle("attention", !!dirty || !!syncing);
+    const arrow = chromePanelOpen ? "▴" : "▾";
+    menuTail.innerHTML = `<span class="action-tail-dot"></span>Меню ${arrow}`;
+    menuTail.title = chromePanelOpen
+      ? "Свернуть меню"
+      : "Меню: назад, выход, синхронизация";
+  }
+}
+
+function escapeHtmlLite(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function patchActionPanel(
+  shell: HTMLElement,
+  state: ChatViewState,
+  callbacks: ChatViewCallbacks,
+): void {
+  const editorType = state.editorType || "word";
+  const target = resolveActionTarget(state.messages);
+  const buttons = resolveActionButtons(target, editorType);
+
+  const tail = shell.querySelector("[data-action-tail]") as HTMLElement | null;
+  const panel = shell.querySelector("[data-action-panel]") as HTMLElement | null;
+  if (!tail || !panel) return;
+
+  if (!buttons.length) {
+    tail.style.display = "none";
+    panel.classList.remove("open");
+    panel.replaceChildren();
+    actionPanelOpen = false;
+    lastAutoOpenFingerprint = null;
+    return;
+  }
+
+  tail.style.display = "";
+  const fp = target?.fingerprint || "";
+  if (fp && fp !== lastAutoOpenFingerprint) {
+    actionPanelOpen = true;
+    lastAutoOpenFingerprint = fp;
+  }
+
+  panel.classList.toggle("open", actionPanelOpen);
+  tail.classList.toggle("open", actionPanelOpen);
+  tail.setAttribute("aria-expanded", actionPanelOpen ? "true" : "false");
+
+  const strip = document.createElement("div");
+  strip.className = "action-icon-strip";
+  for (const btn of buttons) {
+    strip.appendChild(buildActionIconButton(btn, callbacks, state));
+  }
+  panel.replaceChildren(strip);
+}
+
+function buildActionIconButton(
+  spec: ActionButtonSpec,
+  callbacks: ChatViewCallbacks,
+  state: ChatViewState,
+): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = spec.primary ? "action-icon-btn primary" : "action-icon-btn";
+  btn.title = spec.title;
+  btn.setAttribute("data-action-id", spec.id);
+  btn.disabled = state.isSending || !state.chatReady;
+  const glyph = document.createElement("span");
+  glyph.className = "action-icon-glyph";
+  glyph.textContent = spec.glyph;
+  const label = document.createElement("span");
+  label.className = "action-icon-label";
+  label.textContent = spec.label;
+  btn.appendChild(glyph);
+  btn.appendChild(label);
+  btn.onclick = () => {
+    void callbacks.onAction?.(spec.id);
+  };
+  return btn;
+}
+
+function shortenAgentLabel(label: string): string {
+  const t = (label || "Агент").trim();
+  if (t.length <= 28) return t;
+  if (/LCA/i.test(t)) return "LCA";
+  return `${t.slice(0, 26)}…`;
+}
+
+function truncateStatus(status: string): string {
+  const t = (status || "").trim() || "…";
+  return t.length > 36 ? `${t.slice(0, 34)}…` : t;
 }
 
 function bindMessagesScroll(messagesEl: HTMLElement): void {

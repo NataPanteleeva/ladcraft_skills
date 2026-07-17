@@ -33,6 +33,20 @@ export {
   type FixIntent,
 } from "./intent-apply";
 export {
+  resolveActionTarget,
+  resolveActionButtons,
+  planFromActionId,
+  resolveInsertableText,
+  type ActionId,
+  type ActionButtonSpec,
+  type ActionTarget,
+} from "./action-buttons";
+export {
+  downloadTextAsMarkdown,
+  downloadTextAsWordHtml,
+  triggerBrowserDownload,
+} from "./local-download";
+export {
   parseR7Proposal,
   stripR7ProposalMarkup,
   type R7ProposalV1,

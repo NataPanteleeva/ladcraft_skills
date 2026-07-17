@@ -21,6 +21,16 @@ import {
   MISSING_PROPOSAL_AGENT_NOTE,
   MISSING_PROPOSAL_STATUS,
 } from "./apply/intent-apply";
+import {
+  planFromActionId,
+  resolveActionTarget,
+  resolveInsertableText,
+  type ActionId,
+} from "./apply/action-buttons";
+import {
+  downloadTextAsMarkdown,
+  downloadTextAsWordHtml,
+} from "./apply/local-download";
 import { parseR7Proposal } from "./apply/proposal-parse";
 import { getSelectedText } from "./editor/reader";
 import {
@@ -581,6 +591,54 @@ class LadcraftR7App {
       return "noop";
     }
 
+    return this.executeDocumentApplyPlan(plan);
+  }
+
+  /** Action-bar click: same last AI draft as insert; no agent turn. */
+  private async handleActionBar(actionId: ActionId): Promise<void> {
+    if (this.screen !== "chat" || !this.sessionId || this.isSending) return;
+    this.enrichAssistantApplyTextFromHistory();
+    const target = resolveActionTarget(this.messages);
+    if (!target) {
+      this.chatStatus = "Нет черновика для действия";
+      this.renderChatShell(this.chatStatus, true);
+      return;
+    }
+
+    if (actionId === "download_md" || actionId === "download_word_html") {
+      const text = resolveInsertableText(target.raw);
+      if (!text.trim()) {
+        this.chatStatus = "Нет текста для скачивания";
+        this.renderChatShell(this.chatStatus, true);
+        return;
+      }
+      try {
+        if (actionId === "download_md") downloadTextAsMarkdown(text, "черновик");
+        else downloadTextAsWordHtml(text, "черновик");
+        this.chatStatus =
+          actionId === "download_md" ? "Скачан .md" : "Скачан файл для Word (.html)";
+        this.renderChatShell(this.chatStatus, true);
+      } catch (err) {
+        console.warn("[ladcraft-r7_new] download failed", err);
+        this.chatStatus = "Не удалось скачать файл";
+        this.renderChatShell(this.chatStatus, true);
+      }
+      return;
+    }
+
+    const plan = planFromActionId(actionId, target);
+    if (!plan || !plan.tasks.length) {
+      this.chatStatus = "Действие недоступно для этого ответа";
+      this.renderChatShell(this.chatStatus, true);
+      return;
+    }
+
+    await this.executeDocumentApplyPlan(plan);
+  }
+
+  private async executeDocumentApplyPlan(
+    plan: import("./apply/intent-apply").DocumentApplyPlan,
+  ): Promise<"applied" | "blocked" | "noop"> {
     const appliedKeys = this.loadAppliedEditorTaskKeys();
     if (planDedupeHit(plan, appliedKeys)) {
       this.chatStatus = "Уже применено";
@@ -794,6 +852,8 @@ class LadcraftR7App {
         this.contextState,
         this.contextError ?? "",
         this.agentLabel,
+        this.editorType,
+        resolveActionTarget(this.messages)?.fingerprint ?? "",
       ].join("|");
 
       if (!forcePaint && paintKey === this.lastChatPaintKey) return;
@@ -811,6 +871,7 @@ class LadcraftR7App {
           chatReady: this.chatReady,
           diskRef,
           pluginVersion: PLUGIN_VERSION,
+          editorType: this.editorType,
         },
         {
           onBack: () => {
@@ -820,6 +881,7 @@ class LadcraftR7App {
           onRefreshContext: () => this.handleRefreshContext(),
           onSend: (text) => this.handleSend(text),
           onWidgetSubmit: (text) => this.handleSend(text),
+          onAction: (actionId) => this.handleActionBar(actionId),
         },
       );
     };
@@ -1488,6 +1550,20 @@ function escapeHtml(s: string): string {
 let app: LadcraftR7App | null = null;
 
 window.Asc.plugin.init = function init() {
+  // Bust CSS cache when plugin JS version changes (R7 often caches styles/main.css).
+  try {
+    const href = `styles/main.css?v=${PLUGIN_VERSION}`;
+    let link = document.querySelector("link[data-lc-css]") as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.setAttribute("data-lc-css", "1");
+      document.head.appendChild(link);
+    }
+    if (!String(link.getAttribute("href") || "").includes(PLUGIN_VERSION)) {
+      link.setAttribute("href", href);
+    }
+  } catch (_) {}
   captureDiskDocumentIdFromEnvironment();
   const root = document.getElementById("app");
   if (!root) return;
