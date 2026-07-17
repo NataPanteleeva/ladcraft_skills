@@ -1,6 +1,4 @@
 import type { DocumentContextState } from "../transfer/context-sync";
-import type { MessageActionPlan } from "../apply";
-import type { SuggestedAction } from "../apply/suggested-actions";
 import {
   fillAssistantWorkingBody,
   isAssistantWorkingPlaceholder,
@@ -9,16 +7,12 @@ import {
 import { paintMarkdownBody, renderMarkdown } from "./markdown";
 import { renderWidgetHtml } from "./widget-html";
 import { renderWidgetChoiceList } from "./widget-choice-list";
-import { renderSuggestedActions } from "./suggested-actions";
-import { createActionHandlers, renderMessageActions, type ActionHandlers } from "./message-actions";
 import {
   isNearBottom,
   readScrollTop,
   restoreScrollTop,
   scrollToBottom,
 } from "./scroll-preserve";
-
-export { createActionHandlers, type ActionHandlers };
 
 /** Interactive Ladcraft clarification widget (widget_html from history). */
 export interface ChatWidget {
@@ -39,12 +33,16 @@ let scrollIdleTimer: ReturnType<typeof setTimeout> | null = null;
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
+  /** Display text (proposal/task fences stripped). */
   text: string;
+  /**
+   * Raw assistant text for intent-apply (keeps ```r7.proposal```).
+   * When absent, apply falls back to `text`.
+   */
+  applyText?: string;
   widget?: ChatWidget;
   widgetChoices?: string[];
   waitingForInput?: boolean;
-  actionPlan?: MessageActionPlan;
-  suggestedActions?: SuggestedAction[];
 }
 
 export type { DocumentContextState } from "../transfer/context-sync";
@@ -72,13 +70,8 @@ export interface ChatViewCallbacks {
   onRefreshContext?: () => Promise<void>;
 }
 
-export interface ChatViewOptions {
-  actionHandlers?: ActionHandlers;
-}
-
 interface ChatViewContext {
   callbacks: ChatViewCallbacks;
-  actionHandlers?: ActionHandlers;
 }
 
 const viewContexts = new WeakMap<HTMLElement, ChatViewContext>();
@@ -93,14 +86,13 @@ export function renderChatView(
   root: HTMLElement,
   state: ChatViewState,
   callbacks: ChatViewCallbacks,
-  options: ChatViewOptions = {},
 ): void {
   const shell = root.querySelector(`[${CHAT_VIEW_MARKER}]`) as HTMLElement | null;
   if (shell) {
-    patchChatView(shell, state, callbacks, options);
+    patchChatView(shell, state, callbacks);
     return;
   }
-  mountChatView(root, state, callbacks, options);
+  mountChatView(root, state, callbacks);
 }
 
 /** Reset scroll stick when opening a new chat session. */
@@ -154,7 +146,6 @@ function mountChatView(
   root: HTMLElement,
   state: ChatViewState,
   callbacks: ChatViewCallbacks,
-  options: ChatViewOptions,
 ): void {
   const existingInput = document.getElementById("chatInput") as HTMLTextAreaElement | null;
   if (existingInput) chatInputDraft = existingInput.value;
@@ -170,7 +161,7 @@ function mountChatView(
   const panel = el("div", "panel");
   panel.setAttribute(CHAT_VIEW_MARKER, "1");
   root.appendChild(panel);
-  viewContexts.set(panel, { callbacks, actionHandlers: options.actionHandlers });
+  viewContexts.set(panel, { callbacks });
 
   const toolbar = el("div", "toolbar");
   const backBtn = el("button", "secondary");
@@ -237,7 +228,7 @@ function mountChatView(
   inputRow.appendChild(sendBtn);
   panel.appendChild(inputRow);
 
-  syncMessagesList(messagesEl, state.messages, callbacks, options.actionHandlers);
+  syncMessagesList(messagesEl, state.messages, callbacks);
 
   patchChrome(panel, state);
   applyMessagesScroll(messagesEl, previousScrollTop);
@@ -247,12 +238,11 @@ function patchChatView(
   shell: HTMLElement,
   state: ChatViewState,
   callbacks: ChatViewCallbacks,
-  options: ChatViewOptions,
 ): void {
   const existingInput = document.getElementById("chatInput") as HTMLTextAreaElement | null;
   if (existingInput) chatInputDraft = existingInput.value;
 
-  viewContexts.set(shell, { callbacks, actionHandlers: options.actionHandlers });
+  viewContexts.set(shell, { callbacks });
 
   const messagesEl = shell.querySelector("[data-chat-messages]") as HTMLElement | null;
   const previousScrollTop = readScrollTop(messagesEl);
@@ -260,9 +250,8 @@ function patchChatView(
     stickToBottom = isNearBottom(messagesEl);
   }
 
-  const ctx = viewContexts.get(shell)!;
   const messagesChanged = messagesEl
-    ? syncMessagesList(messagesEl, state.messages, ctx.callbacks, ctx.actionHandlers)
+    ? syncMessagesList(messagesEl, state.messages, callbacks)
     : false;
 
   patchChrome(shell, state);
@@ -370,8 +359,6 @@ function messageFingerprint(m: ChatMessage): string {
       : null,
     choices: m.widgetChoices,
     waiting: m.waitingForInput,
-    actions: m.actionPlan?.blocks.length ?? 0,
-    suggested: m.suggestedActions?.map((a) => `${a.send}:${a.label}`) ?? [],
   });
 }
 
@@ -380,9 +367,8 @@ function syncMessagesList(
   container: HTMLElement,
   messages: ChatMessage[],
   callbacks: ChatViewCallbacks,
-  actionHandlers?: ActionHandlers,
 ): boolean {
-  const domNodes = [...container.querySelectorAll("[data-msg-id]")] as HTMLElement[];
+  const domNodes = Array.from(container.querySelectorAll("[data-msg-id]")) as HTMLElement[];
   const domIds = domNodes.map((n) => n.getAttribute("data-msg-id") ?? "");
   const stateIds = messages.map((m) => m.id);
 
@@ -393,7 +379,7 @@ function syncMessagesList(
   if (needsRebuild) {
     container.replaceChildren();
     for (const m of messages) {
-      const node = renderMessage(m, callbacks, actionHandlers);
+      const node = renderMessage(m, callbacks);
       node.setAttribute("data-msg-id", m.id);
       node.setAttribute("data-msg-fp", messageFingerprint(m));
       container.appendChild(node);
@@ -408,14 +394,13 @@ function syncMessagesList(
     if (!node) continue;
     if (node.getAttribute("data-msg-fp") === fp) continue;
 
-    // Prefer in-place body/actions patch — avoids full bubble replace (pause/flicker).
-    if (m.role === "assistant" && patchAssistantMessageInPlace(node, m, callbacks, actionHandlers)) {
+    if (m.role === "assistant" && patchAssistantMessageInPlace(node, m)) {
       node.setAttribute("data-msg-fp", fp);
       changed = true;
       continue;
     }
 
-    const newNode = renderMessage(m, callbacks, actionHandlers);
+    const newNode = renderMessage(m, callbacks);
     newNode.setAttribute("data-msg-id", m.id);
     newNode.setAttribute("data-msg-fp", fp);
     node.replaceWith(newNode);
@@ -425,15 +410,10 @@ function syncMessagesList(
 }
 
 /**
- * Patch assistant markdown + append questions/actions without rebuilding the bubble.
+ * Patch assistant markdown without rebuilding the bubble.
  * Widgets / choice lists still require a full replace.
  */
-function patchAssistantMessageInPlace(
-  node: HTMLElement,
-  m: ChatMessage,
-  callbacks?: ChatViewCallbacks,
-  actionHandlers?: ActionHandlers,
-): boolean {
+function patchAssistantMessageInPlace(node: HTMLElement, m: ChatMessage): boolean {
   if (m.widget || m.widgetChoices?.length || m.waitingForInput) return false;
   if (node.querySelector(".widget-host, .widget-choice-list, .widget-waiting")) return false;
 
@@ -449,7 +429,6 @@ function patchAssistantMessageInPlace(
     let md = body.querySelector(".message-md") as HTMLElement | null;
     if (isAssistantWorkingPlaceholder(nextText)) {
       body.querySelector(".message-md")?.remove();
-      body.querySelector(".suggested-actions")?.remove();
       fillAssistantWorkingBody(body, nextText);
     } else if (nextText.trim()) {
       if (!md) {
@@ -463,54 +442,8 @@ function patchAssistantMessageInPlace(
     node.setAttribute("data-msg-text", nextText);
   }
 
-  syncSuggestedActions(body, m, callbacks);
-  syncMessageActions(node, m, actionHandlers);
   node.classList.remove("message-streaming");
   return true;
-}
-
-function syncSuggestedActions(
-  body: HTMLElement,
-  m: ChatMessage,
-  callbacks?: ChatViewCallbacks,
-): void {
-  const existing = body.querySelector(".suggested-actions");
-  const actions = m.suggestedActions;
-  if (!actions?.length || m.widget) {
-    existing?.remove();
-    return;
-  }
-  const onSend = callbacks?.onSend;
-  if (!onSend) {
-    existing?.remove();
-    return;
-  }
-  const next = renderSuggestedActions(actions, (value) => {
-    void onSend(value);
-  });
-  if (existing) {
-    existing.replaceWith(next);
-  } else {
-    body.appendChild(next);
-  }
-}
-
-function syncMessageActions(
-  node: HTMLElement,
-  m: ChatMessage,
-  actionHandlers?: ActionHandlers,
-): void {
-  const existing = node.querySelector(".message-actions");
-  if (!actionHandlers || !m.actionPlan?.blocks.length) {
-    existing?.remove();
-    return;
-  }
-  const next = renderMessageActions(m.actionPlan, actionHandlers);
-  if (existing) {
-    existing.replaceWith(next);
-  } else {
-    node.appendChild(next);
-  }
 }
 
 function cssEscape(value: string): string {
@@ -520,11 +453,7 @@ function cssEscape(value: string): string {
   return value.replace(/["\\]/g, "\\$&");
 }
 
-function renderMessage(
-  m: ChatMessage,
-  callbacks?: ChatViewCallbacks,
-  actionHandlers?: ActionHandlers,
-): HTMLElement {
+function renderMessage(m: ChatMessage, callbacks?: ChatViewCallbacks): HTMLElement {
   const node = el("div", `message ${m.role}`);
 
   if (m.role === "assistant") {
@@ -538,17 +467,6 @@ function renderMessage(
       }
     }
     node.setAttribute("data-msg-text", m.text);
-
-    if (m.suggestedActions?.length && !m.widget) {
-      const onSend = callbacks?.onSend;
-      if (onSend) {
-        body.appendChild(
-          renderSuggestedActions(m.suggestedActions, (value) => {
-            void onSend(value);
-          }),
-        );
-      }
-    }
 
     if (m.widget) {
       const onSubmit = callbacks?.onWidgetSubmit ?? callbacks?.onSend;
@@ -575,20 +493,12 @@ function renderMessage(
     }
 
     node.appendChild(body);
-
-    if (actionHandlers && m.actionPlan?.blocks.length) {
-      node.appendChild(renderMessageActions(m.actionPlan, actionHandlers));
-    }
   } else {
     const body = el("div", "message-body");
     if (m.text.trim()) {
       body.textContent = m.text;
     }
     node.appendChild(body);
-
-    if (actionHandlers && m.actionPlan?.blocks.length) {
-      node.appendChild(renderMessageActions(m.actionPlan, actionHandlers));
-    }
   }
 
   return node;

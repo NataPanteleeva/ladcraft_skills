@@ -22,7 +22,7 @@ npm install
 npm run build
 ```
 
-Версия UI: `0.5.0-lca1` (`config.json` / `src/version.ts`).
+Версия UI: `0.6.6-explicit-paste` (`config.json` / `src/version.ts`).
 
 ## Передача документа
 

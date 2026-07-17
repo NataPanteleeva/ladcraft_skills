@@ -21,9 +21,17 @@ export interface DocumentApplyPlan {
   dedupeKeys: string[];
   requireSelection: boolean;
   itemIds?: number[];
-  source: "proposal" | "markdown-fallback";
+  source: "proposal" | "markdown-fallback" | "missing-proposal";
   statusHint?: string;
 }
+
+/** UI status when approval has no proposal — message is forwarded to the agent. */
+export const MISSING_PROPOSAL_STATUS =
+  "Нет r7.proposal — отправляю агенту повторить ответ с proposal";
+
+/** Appended to the user turn so the agent regenerates with a fence (visible on Ladcraft site). */
+export const MISSING_PROPOSAL_AGENT_NOTE =
+  "[Плагин: в предыдущем ответе ассистента нет валидного r7.proposal. Повтори insertable текст (саммари/черновик) целиком и добавь в конец fence ```r7.proposal с полным text. Вставку в документ сделает плагин после следующей фразы «вставь».]";
 
 /** @deprecated single-intent shape kept for tests / exports */
 export interface DocumentApplyIntent {
@@ -38,6 +46,10 @@ const APPROVAL_SHORT_RE = /^(?:да|ок|ok|yes|ага|угу)[.!]?$/i;
 const ADD_COMMENT_RE = /(?:добавь(?:те)?|внеси(?:те)?)\s+комментар/i;
 const COMMENT_APPROVAL_RE =
   /^(?:да|ок|ok|добавь(?:те)?|одобряю|примени(?:ть)?)[.!]?$/i;
+
+/** User asks to replace the current editor selection with the last draft/proposal. */
+const REPLACE_SELECTION_USER_RE =
+  /замени(?:те)?\s+(?:выделен\w*|фрагмент|абзац)|вместо\s+выделен|замени(?:те)?[\s\S]{0,48}\s+на\s+(?:это|предложенн\w*)\s+(?:предложение|текст|фрагмент)?|вставь(?:те)?\s+вместо\s+выделен/i;
 
 const POS_START_RE = /в\s+начал(?:о|е)(?:\s+документ)?/i;
 const POS_END_RE = /в\s+конец(?:\s+документ)?/i;
@@ -59,9 +71,20 @@ const HTML_HINT_RE = /<[a-z][\s\S]*>/i;
 const ASK_INSERT_RE =
   /(?:^|\n)(?:---\s*\n)?(?:заменить\s+(?:абзац|выделен\w*)|вставить\s+(?:текст|это|черновик)?\s*(?:в\s+документ)?|заменю\s+выделен|вставить\s*\?|«вставь»|"вставь")/i;
 
+/** Short analyze one-liner without Черновик (for «да» / «вставь это» / replace). */
+const APPLYABLE_BLOB_MAX_CHARS = 800;
+/** Structured summary / long draft via markdown-fallback. */
+const INSERTABLE_DRAFT_MAX_CHARS = 12000;
+
 const MAX_FINDINGS = 15;
 
 export type FixIntent = { mode: "all" } | { mode: "ids"; ids: number[] };
+
+/** True when user asks to replace the current selection with the last draft. */
+export function isReplaceSelectionUserIntent(userText: string): boolean {
+  const body = stripUserContextBlocks(userText).trim();
+  return !!body && REPLACE_SELECTION_USER_RE.test(body);
+}
 
 /** True when user text is an approval to apply a pending chat draft into the document. */
 export function isDocumentApplyApproval(userText: string): boolean {
@@ -70,6 +93,7 @@ export function isDocumentApplyApproval(userText: string): boolean {
   if (parseFixIntent(body)) return true;
   if (APPROVAL_SHORT_RE.test(body)) return true;
   if (ADD_COMMENT_RE.test(body)) return true;
+  if (isReplaceSelectionUserIntent(body)) return true;
   if (APPROVAL_RE.test(body)) return true;
   if (/^да[.!]?\s*(?:вставь|одобряю|примени)/i.test(body)) return true;
   return false;
@@ -112,7 +136,7 @@ export function resolveDocumentApplyPlan(
   const draftMsg = findLastAssistantDraft(messages);
   if (!draftMsg) return null;
 
-  const raw = draftMsg.text.trim();
+  const raw = assistantApplySource(draftMsg);
   if (!raw || isAssistantWorkingPlaceholderText(raw)) return null;
 
   const proposal = parseR7Proposal(raw);
@@ -137,13 +161,46 @@ export function resolveDocumentApplyPlan(
     return planFromProposal(proposal, userText, userBody);
   }
 
-  // Markdown fallback: only with explicit Черновик (never whole window).
-  if (!DRAFT_HEADER_RE.test(raw) && !ANCHOR_RE.test(raw)) {
-    return null;
+  // Controlled markdown-fallback (no r7.proposal): Черновик / summary / explicit-insert body.
+  if (isStructuredEditDraft(raw) && !DRAFT_HEADER_RE.test(raw)) {
+    return missingProposalPlan();
   }
 
-  const text = extractDraftBody(raw);
-  if (!text.trim()) return null;
+  const wantsReplace = isReplaceSelectionUserIntent(userBody);
+  const wantsInsertEto =
+    /(?:^|\s)вставь(?:те)?\s+это(?:\s|$|[.!,])/i.test(userBody);
+  const wantsInsertText = /вставь(?:те)?\s+текст/i.test(userBody);
+  const wantsExplicitPosition =
+    POS_START_RE.test(userBody) ||
+    POS_END_RE.test(userBody) ||
+    POS_CURSOR_RE.test(userBody);
+  /** «вставь текст» / «…у курсора» / «вставь это» — явный paste last reply. */
+  const wantsExplicitPaste =
+    wantsInsertEto || wantsInsertText || wantsExplicitPosition;
+  const isShortDa = APPROVAL_SHORT_RE.test(userBody);
+  const hasDraftHeader = DRAFT_HEADER_RE.test(raw);
+  const isSummary = isStructuredSummaryBlob(raw);
+  const shortBlobOk =
+    isApplyableAssistantBlob(raw, APPLYABLE_BLOB_MAX_CHARS) &&
+    (wantsReplace || wantsExplicitPaste || isShortDa);
+  const summaryOk =
+    isSummary &&
+    (APPROVAL_RE.test(userBody) ||
+      wantsReplace ||
+      isShortDa ||
+      wantsExplicitPaste);
+  /** Explicit paste may take a longer prose reply (not only **Label:** summary). */
+  const explicitBodyOk =
+    wantsExplicitPaste && isGenericInsertableDraft(raw);
+
+  if (!hasDraftHeader && !summaryOk && !shortBlobOk && !explicitBodyOk) {
+    return missingProposalPlan();
+  }
+
+  const text = extractInsertableMarkdown(raw);
+  if (!text.trim()) {
+    return missingProposalPlan();
+  }
 
   const position = parseInsertPosition(userText);
   let kind: IntentApplyKind = "paste_text";
@@ -151,10 +208,12 @@ export function resolveDocumentApplyPlan(
 
   if (ADD_COMMENT_RE.test(userBody) || (COMMENT_HINT_RE.test(raw) && COMMENT_APPROVAL_RE.test(userBody))) {
     kind = "add_comment";
+    requireSelection = true;
   } else if (
+    wantsReplace ||
     ANCHOR_RE.test(raw) ||
     REWRITE_HINT_RE.test(raw) ||
-    (/замени/i.test(userBody) && DRAFT_HEADER_RE.test(raw))
+    (/замени/i.test(userBody) && hasDraftHeader)
   ) {
     kind = "replace_selection";
     requireSelection = true;
@@ -169,6 +228,16 @@ export function resolveDocumentApplyPlan(
     dedupeKeys: [intentApplyKey(intent), `intent-plan:${taskContentFingerprint(task)}`],
     requireSelection,
     source: "markdown-fallback",
+  };
+}
+
+function missingProposalPlan(): DocumentApplyPlan {
+  return {
+    tasks: [],
+    dedupeKeys: [],
+    requireSelection: false,
+    source: "missing-proposal",
+    statusHint: MISSING_PROPOSAL_STATUS,
   };
 }
 
@@ -256,7 +325,11 @@ function planFromProposal(
 
   let op = proposal.op || "paste_text";
   let requireSelection = false;
-  if (proposal.preferReplaceSelection || op === "replace_selection") {
+  if (
+    proposal.preferReplaceSelection ||
+    op === "replace_selection" ||
+    isReplaceSelectionUserIntent(userBody)
+  ) {
     op = "replace_selection";
     requireSelection = true;
   }
@@ -271,7 +344,7 @@ function planFromProposal(
   }
 
   const intent: DocumentApplyIntent = {
-    kind: op,
+    kind: op as IntentApplyKind,
     position,
     text,
   };
@@ -360,7 +433,7 @@ function findLastAssistantDraft(messages: ChatMessage[]): ChatMessage | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role !== "assistant") continue;
-    const t = (m.text || "").trim();
+    const t = assistantApplySource(m);
     if (!t || isAssistantWorkingPlaceholderText(t)) continue;
     if (m.widget || m.waitingForInput) continue;
     return m;
@@ -368,25 +441,31 @@ function findLastAssistantDraft(messages: ChatMessage[]): ChatMessage | null {
   return null;
 }
 
+/** Prefer applyText (keeps r7.proposal); display text is sanitized. */
+export function assistantApplySource(message: ChatMessage): string {
+  return (message.applyText || message.text || "").trim();
+}
+
 /**
- * Prefer content under Черновик:; never paste status / якорь / «Заменить…?».
+ * Prefer content under Черновик:; otherwise full cleaned markdown (no mid-body label split).
  */
 export function extractDraftBody(assistantText: string): string {
+  return extractInsertableMarkdown(assistantText);
+}
+
+/** Insertable markdown for fallback: Черновик section or full reply minus fences/ask footer. */
+export function extractInsertableMarkdown(assistantText: string): string {
   const raw = assistantText.trim();
   if (!raw) return "";
 
   if (DRAFT_HEADER_RE.test(raw)) {
-    const parts = raw.split(DRAFT_HEADER_RE);
-    let body = (parts[parts.length - 1] || "").trim();
-    body = body.split(/\n---\s*\n/)[0]?.trim() ?? body;
-    const askIdx = body.search(ASK_INSERT_RE);
-    if (askIdx >= 0) body = body.slice(0, askIdx).trim();
-    return finalizeDraftBody(body);
+    return extractBodyAfterHeaderSplit(raw, DRAFT_HEADER_RE);
   }
 
-  let body = raw;
+  let body = stripFencedBlocks(raw);
   const askIdx = body.search(ASK_INSERT_RE);
   if (askIdx > 40) body = body.slice(0, askIdx).trim();
+  else if (askIdx === 0) body = "";
 
   if (ANCHOR_RE.test(body)) {
     const afterAnchor = body.split(/\n---\s*\n/);
@@ -395,6 +474,19 @@ export function extractDraftBody(assistantText: string): string {
     }
   }
 
+  body = finalizeDraftBody(body);
+  if (body.length <= APPLYABLE_BLOB_MAX_CHARS) {
+    body = unwrapSingleEmphasis(body);
+  }
+  return body;
+}
+
+function extractBodyAfterHeaderSplit(raw: string, headerRe: RegExp): string {
+  const parts = raw.split(headerRe);
+  let body = stripFencedBlocks((parts[parts.length - 1] || "").trim());
+  body = body.split(/\n---\s*\n/)[0]?.trim() ?? body;
+  const askIdx = body.search(ASK_INSERT_RE);
+  if (askIdx >= 0) body = body.slice(0, askIdx).trim();
   return finalizeDraftBody(body);
 }
 
@@ -403,6 +495,74 @@ function finalizeDraftBody(body: string): string {
     .replace(/^\*{0,2}черновик(?:\s*\([^)]*\))?\s*:?\*{0,2}\s*/i, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function stripFencedBlocks(text: string): string {
+  return text
+    .replace(/```r7\.proposal[\s\S]*?```/gi, "")
+    .replace(/```r7\.event[\s\S]*?```/gi, "")
+    .replace(/```r7\.task[\s\S]*?```/gi, "")
+    .trim();
+}
+
+function unwrapSingleEmphasis(text: string): string {
+  const t = text.trim();
+  const bold = t.match(/^\*\*([\s\S]+?)\*\*$/);
+  if (bold) return bold[1].trim();
+  const italic = t.match(/^\*([^*\n][\s\S]*?)\*$/);
+  if (italic) return italic[1].trim();
+  return t;
+}
+
+/** Short plain analyze reply suitable as insert/replace without Черновик. */
+export function isApplyableAssistantBlob(
+  raw: string,
+  maxChars: number = APPLYABLE_BLOB_MAX_CHARS,
+): boolean {
+  const cleaned = stripFencedBlocks(raw.trim());
+  if (!cleaned) return false;
+  if (cleaned.length > maxChars) return false;
+  if (isStructuredEditDraft(cleaned)) return false;
+  if (/^\s*\|.+\|/m.test(cleaned)) return false;
+  if (/исправь\s+(?:все|\d)/i.test(cleaned)) return false;
+  const paragraphs = cleaned.split(/\n\s*\n/).filter((p) => p.trim());
+  if (paragraphs.length > 2) return false;
+  return !!unwrapSingleEmphasis(finalizeDraftBody(cleaned)).trim();
+}
+
+/** Multi-field summary (Название / Тип / Разделы…) — safe for «вставь» without proposal. */
+export function isStructuredSummaryBlob(raw: string): boolean {
+  const cleaned = stripFencedBlocks(raw.trim());
+  if (!cleaned) return false;
+  if (cleaned.length > INSERTABLE_DRAFT_MAX_CHARS) return false;
+  if (isStructuredEditDraft(cleaned)) return false;
+  const fieldLabels = cleaned.match(/\*\*[^*\n]{1,60}:\*\*/g) || [];
+  if (fieldLabels.length >= 2) return true;
+  if (
+    /(?:кратк\w*\s+)?(?:summary|саммари|резюме)/i.test(cleaned) &&
+    cleaned.length >= 200 &&
+    (cleaned.match(/^\s*\d+\.\s+/gm) || []).length >= 2
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Substantial assistant body for explicit «вставь текст» / position phrases.
+ * Broader than structured summary; still refuses findings / «Читаю контекст».
+ */
+export function isGenericInsertableDraft(raw: string): boolean {
+  const cleaned = stripFencedBlocks(raw.trim());
+  if (!cleaned) return false;
+  if (cleaned.length > INSERTABLE_DRAFT_MAX_CHARS) return false;
+  if (isStructuredEditDraft(cleaned)) return false;
+  if (/^\s*читаю\s+контекст/i.test(cleaned)) return false;
+  if (isAssistantWorkingPlaceholderText(cleaned)) return false;
+  const askIdx = cleaned.search(ASK_INSERT_RE);
+  if (askIdx >= 0 && askIdx < 40) return false;
+  const body = extractInsertableMarkdown(raw);
+  return body.trim().length >= 40;
 }
 
 function stripUserContextBlocks(text: string): string {

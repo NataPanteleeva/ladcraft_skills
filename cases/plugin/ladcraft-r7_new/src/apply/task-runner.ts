@@ -130,7 +130,11 @@ async function applySingleEditorTask(editorType: EditorType, task: R7Task): Prom
     }
     case "paste_text": {
       const payload = unwrapPastePayload(task.data);
-      await insertText(payload.text, payload.position, "text/plain");
+      // Align with replace_selection: markdown → HTML via PasteHtml (bold ** etc.).
+      const mime = /<[a-z][\s\S]*>/i.test(payload.text.trim())
+        ? "text/html"
+        : "text/markdown";
+      await insertText(payload.text, payload.position, mime);
       return;
     }
     case "cell_paste":

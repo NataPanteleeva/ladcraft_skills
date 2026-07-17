@@ -18,7 +18,10 @@ import {
 import {
   planDedupeHit,
   resolveDocumentApplyPlan,
+  MISSING_PROPOSAL_AGENT_NOTE,
+  MISSING_PROPOSAL_STATUS,
 } from "./apply/intent-apply";
+import { parseR7Proposal } from "./apply/proposal-parse";
 import { getSelectedText } from "./editor/reader";
 import {
   buildApplyEventPayload,
@@ -42,6 +45,7 @@ import { isVfsPathConflictError } from "./eai/vfs";
 import { loadCatalog, type CatalogResult } from "./eai/catalog";
 import {
   createSession,
+  extractApplySourceText,
   getHistoryMessages,
   isAwaitingCompareReport,
   isCompareTurnRequest,
@@ -55,12 +59,10 @@ import { createChatTransport } from "./eai/transport";
 import { StreamOrchestrator } from "./eai/stream-orchestrator";
 import { extractWidgetPayload } from "./eai/widget";
 import { isVfsNotFoundError, isVfsFileReady } from "./eai/vfs";
-import { getSelectedText } from "./editor/reader";
 import { renderAuthView } from "./ui/auth";
 import { renderShellView } from "./ui/shell";
 import { historyToChatMessages } from "./ui/chat-history";
 import {
-  createActionHandlers,
   renderChatView,
   resetChatScroll,
   unmountChatView,
@@ -80,9 +82,12 @@ class LadcraftR7App {
   });
   private readonly streamOrchestrator = new StreamOrchestrator(this.chatTransport, {
     getMessages: () => this.messages,
-    setMessageText: (messageId, text) => {
+    setMessageText: (messageId, text, applyText) => {
       const msg = this.messages.find((m) => m.id === messageId);
-      if (msg) msg.text = text;
+      if (msg) {
+        msg.text = text;
+        if (applyText !== undefined) msg.applyText = applyText;
+      }
     },
     upsertAssistantBubble: (messageId) => this.upsertStreamingAssistant(messageId),
     patchStreamingDom: (messageId, text, finalize) =>
@@ -516,23 +521,80 @@ class LadcraftR7App {
   }
 
   /**
-   * On approval / «исправь …» apply last r7.proposal (or Черновик fallback) via Asc
-   * without waiting for agent skill tool_calls.
+   * Re-attach applyText from rawHistory so intent-apply sees r7.proposal
+   * even if display text was sanitized or stream truncated the fence.
    */
-  private async tryIntentApplyFromUserText(userText: string): Promise<void> {
-    if (this.screen !== "chat" || !this.sessionId) return;
+  private enrichAssistantApplyTextFromHistory(): void {
+    if (!this.rawHistory.length) return;
+    const byId = new Map(this.rawHistory.map((h) => [h.id, h]));
+    for (const msg of this.messages) {
+      if (msg.role !== "assistant") continue;
+      const hist = byId.get(msg.id);
+      const fromHist = hist ? extractApplySourceText(hist).trim() : "";
+      const current = (msg.applyText || "").trim();
+      const pick =
+        (parseR7Proposal(fromHist) && fromHist) ||
+        (parseR7Proposal(current) && current) ||
+        (fromHist.length > current.length ? fromHist : current) ||
+        fromHist ||
+        current;
+      if (pick) msg.applyText = pick;
+    }
+
+    // Last-resort: if last draft still has no proposal, scan recent assistants in rawHistory.
+    const lastAst = [...this.messages].reverse().find((m) => m.role === "assistant" && !m.widget);
+    if (lastAst && !parseR7Proposal(lastAst.applyText || lastAst.text || "")) {
+      for (let i = this.rawHistory.length - 1; i >= 0; i--) {
+        const h = this.rawHistory[i];
+        if (h.role !== "assistant") continue;
+        const src = extractApplySourceText(h).trim();
+        if (parseR7Proposal(src)) {
+          lastAst.applyText = src;
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * On approval / «исправь …» apply last r7.proposal (or Черновик fallback) via Asc.
+   * "needs-proposal" = no fence in last answer → caller must forward turn to agent (visible on site).
+   */
+  private async tryIntentApplyFromUserText(
+    userText: string,
+  ): Promise<"applied" | "blocked" | "noop" | "needs-proposal"> {
+    if (this.screen !== "chat" || !this.sessionId) return "noop";
+    this.enrichAssistantApplyTextFromHistory();
     const plan = resolveDocumentApplyPlan(userText, this.messages);
-    if (!plan || !plan.tasks.length) return;
+    if (!plan) return "noop";
+    if (!plan.tasks.length) {
+      if (plan.source === "missing-proposal") {
+        this.chatStatus = plan.statusHint || MISSING_PROPOSAL_STATUS;
+        this.renderChatShell(this.chatStatus, true);
+        return "needs-proposal";
+      }
+      if (plan.statusHint) {
+        this.chatStatus = plan.statusHint;
+        this.renderChatShell(this.chatStatus, true);
+        return "blocked";
+      }
+      return "noop";
+    }
 
     const appliedKeys = this.loadAppliedEditorTaskKeys();
-    if (planDedupeHit(plan, appliedKeys)) return;
+    if (planDedupeHit(plan, appliedKeys)) {
+      this.chatStatus = "Уже применено";
+      this.renderChatShell(this.chatStatus, true);
+      return "applied";
+    }
 
-    // Already applied same content via earlier tool_calls / intent.
     const pendingTasks = plan.tasks.filter((task) => !appliedKeys.has(taskContentKey(task)));
     if (!pendingTasks.length) {
       for (const k of plan.dedupeKeys) appliedKeys.add(k);
       this.persistAppliedEditorTaskKeys(appliedKeys);
-      return;
+      this.chatStatus = "Уже применено";
+      this.renderChatShell(this.chatStatus, true);
+      return "applied";
     }
 
     if (plan.requireSelection) {
@@ -541,7 +603,7 @@ class LadcraftR7App {
         this.chatStatus =
           "Выделите фрагмент в документе и повторите «да» / «вставь»";
         this.renderChatShell(this.chatStatus, true);
-        return;
+        return "blocked";
       }
     }
 
@@ -550,7 +612,7 @@ class LadcraftR7App {
 
     try {
       const result = await applyEditorTasks(this.editorType, pendingTasks);
-      if (!result.successfulTasks.length && !result.failed) return;
+      if (!result.successfulTasks.length && !result.failed) return "noop";
 
       if (result.successfulTasks.length) {
         for (const task of result.successfulTasks) {
@@ -563,20 +625,24 @@ class LadcraftR7App {
 
       if (result.summary) {
         this.chatStatus = result.summary;
-        this.renderChatShell(this.chatStatus, true);
+      } else if (result.successfulTasks.length) {
+        this.chatStatus =
+          result.successfulTasks[0]?.type === "replace_selection"
+            ? "Заменено в документе"
+            : "Вставлено в документ";
+      } else if (result.failed) {
+        this.chatStatus = "Не удалось применить изменение в документе";
       }
+      this.renderChatShell(this.chatStatus, true);
 
-      if (result.applied + result.failed > 0) {
-        await this.sendApplyFeedbackQuiet(
-          result,
-          ["intent-local"],
-          result.successfulTasks.length ? result.successfulTasks : pendingTasks,
-        );
-      }
+      if (result.successfulTasks.length) return "applied";
+      if (result.failed) return "blocked";
+      return "noop";
     } catch (err) {
       console.warn("[ladcraft-r7_new] intent apply failed", err);
       this.chatStatus = "Не удалось применить изменение в документе";
       this.renderChatShell(this.chatStatus, true);
+      return "blocked";
     }
   }
 
@@ -703,7 +769,6 @@ class LadcraftR7App {
     this.rawHistory = history;
     const serverMessages = historyToChatMessages(history, {
       editorType: this.editorType,
-      actionButtons: this.features.actionButtons,
     });
     this.messages = this.mergePendingOutboundUserMessage(serverMessages);
     this.firstMessageInSession = !this.messages.some((m) => m.role === "user");
@@ -755,19 +820,6 @@ class LadcraftR7App {
           onRefreshContext: () => this.handleRefreshContext(),
           onSend: (text) => this.handleSend(text),
           onWidgetSubmit: (text) => this.handleSend(text),
-        },
-        {
-          actionHandlers: createActionHandlers({
-            client: this.client,
-            editorType: this.editorType,
-            onStatus: (msg) => {
-              this.chatStatus = msg;
-              if (this.screen === "chat") {
-                this.renderChatShell(msg);
-              }
-            },
-            onSendMessage: (text) => this.handleSend(text),
-          }),
         },
       );
     };
@@ -861,7 +913,7 @@ class LadcraftR7App {
     return this.messages
       .map(
         (m) =>
-          `${m.id}:${m.text.length}:${m.widget ? 1 : 0}:${m.widgetChoices?.length ?? 0}:${m.suggestedActions?.length ?? 0}`,
+          `${m.id}:${m.text.length}:${m.widget ? 1 : 0}:${m.widgetChoices?.length ?? 0}`,
       )
       .join("|");
   }
@@ -875,7 +927,7 @@ class LadcraftR7App {
     for (let i = lastUser + 1; i < this.messages.length; i++) {
       const m = this.messages[i];
       if (m.role !== "assistant") continue;
-      if (m.widget || m.widgetChoices?.length || m.suggestedActions?.length) return true;
+      if (m.widget || m.widgetChoices?.length) return true;
       const body = m.text.trim();
       if (body && body !== "Агент выполняет запрос…") return true;
     }
@@ -1096,8 +1148,23 @@ class LadcraftR7App {
     this.startChatPoll();
 
     try {
-      // Apply paste/replace/comment immediately from chat draft — do not wait for skill tools.
-      await this.tryIntentApplyFromUserText(text);
+      // Local Asc apply from proposal — do not open an agent turn on success / hard block.
+      const intentResult = await this.tryIntentApplyFromUserText(text);
+      if (intentResult === "applied" || intentResult === "blocked") {
+        // Keep local user bubble for context; agent never sees this approval.
+        this.pendingOutboundUserText = null;
+        return;
+      }
+
+      // No proposal in last answer: forward to Ladcraft so the phrase appears on the site
+      // and the agent can regenerate with r7.proposal.
+      let outboundText = text;
+      if (intentResult === "needs-proposal") {
+        outboundText = `${text.trim()}\n\n${MISSING_PROPOSAL_AGENT_NOTE}`;
+        this.pendingOutboundUserText = outboundText;
+        this.chatStatus = "Ожидание ответа (нужен r7.proposal)…";
+        this.renderChatShell(this.chatStatus, true);
+      }
 
       this.teardownStreamTurn();
       this.streamOrchestrator.beginTurn();
@@ -1162,19 +1229,19 @@ class LadcraftR7App {
         this.streamOrchestrator.subscribe(activeSessionId);
       }
 
-      await this.sendUserMessage(text, agentId);
+      await this.sendUserMessage(outboundText, agentId);
       await this.syncChatFromServer(agentId);
 
       if (this.firstMessageInSession) {
         this.firstMessageInSession = false;
       }
 
-      if (isCompareTurnRequest(text, this.rawHistory)) {
+      if (isCompareTurnRequest(outboundText, this.rawHistory)) {
         this.chatStatus = "Агент выполняет сравнение…";
         this.renderChatShell(this.chatStatus);
       }
 
-      const waitTimeoutMs = resolveAssistantWaitTimeoutMs(text, this.rawHistory);
+      const waitTimeoutMs = resolveAssistantWaitTimeoutMs(outboundText, this.rawHistory);
 
       const turn = await waitForAssistantTurn(
         this.client,

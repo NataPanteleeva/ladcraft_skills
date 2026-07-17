@@ -20,7 +20,7 @@ version: 1.3.0
 
 1. Сформируй текст по заданию.
 2. Покажи **полный** результат под **Черновик:**.
-3. В конце — fence proposal (тот же текст):
+3. В конце — fence proposal (`text` = **тот же** полный текст, что под Черновик; без proposal плагин не вставит):
 
 ```r7.proposal
 {"schema":"r7.proposal/v1","kind":"blob","op":"paste_text","text":"…полный черновик…","defaultPosition":"cursor"}

@@ -1,6 +1,6 @@
 {
   "name": "ladcraft-r7-new",
-  "version": "0.5.5-vfs1",
+  "version": "0.6.6-explicit-paste",
   "private": true,
   "scripts": {
     "build": "npm run build:btn-stream",

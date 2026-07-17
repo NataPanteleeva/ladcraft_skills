@@ -402,6 +402,32 @@ export function extractVisibleText(message: HistoryMessage): string {
   return fromTimeline || fromContent;
 }
 
+/**
+ * Full assistant text for intent-apply (keeps r7.proposal wherever the server put it).
+ * Prefers any chunk that already contains a proposal fence/JSON.
+ */
+export function extractApplySourceText(message: HistoryMessage): string {
+  const chunks: string[] = [];
+  const content = stripAgentServiceMarkup(stripLeakedToolPayload(message.content?.trim() ?? ""));
+  if (content) chunks.push(content);
+
+  for (const entry of message.response_timeline ?? []) {
+    if (entry.kind !== "text" || !entry.content?.trim()) continue;
+    const part = stripAgentServiceMarkup(entry.content.trim());
+    if (part) chunks.push(part);
+  }
+
+  const withProposal = chunks.filter((c) => /r7\.proposal\/v1|```r7\.proposal/i.test(c));
+  if (withProposal.length) {
+    // Longest chunk that still carries the proposal (usually full reply).
+    withProposal.sort((a, b) => b.length - a.length);
+    return withProposal[0];
+  }
+
+  const joined = chunks.join("\n\n").trim();
+  return joined || extractVisibleText(message);
+}
+
 function joinTimelineVisibleText(
   timeline: NonNullable<HistoryMessage["response_timeline"]>,
 ): string {

@@ -2,7 +2,6 @@ import type { HistoryMessage } from "../eai/session";
 import { stripTaskMarkup } from "./task-parse";
 import { stripR7EventMarkup } from "./apply-feedback";
 import { stripR7ProposalMarkup } from "./proposal-parse";
-import { stripActionsMarkup, stripActionHintLines } from "./suggested-actions";
 
 const LEAKED_TASK_ARRAY_RE =
   /\[\s*\{[\s\S]*?"type"\s*:\s*"(?:deliver_inline|deliver_file|paste|paste_text|share_link)"[\s\S]*?\}\s*\]/gi;
@@ -27,6 +26,11 @@ const TRAILING_FENCE_RE = /```\s*$/;
 const ORPHAN_R7_TASK_LABEL_RE = /^\*r7\.task\*:\s*$/gm;
 
 const DISK_SAVE_ACK_LINE_RE = /^\*{0,2}Отчёт сохранён на Р7-Диск/;
+
+const ACTIONS_BLOCK_RE = /```r7\.actions\s*([\s\S]*?)```/gi;
+const ORPHAN_ACTIONS_FENCE_RE = /```r7\.actions[\s\S]*/gi;
+const ACTION_HINT_LINE_RE =
+  /^(?:\s*(?:[-*•]\s*))?Чтобы\s+.+,\s*напишите:\s*\*{0,2}[^*\n]+\*{0,2}\s*$/gim;
 
 const WEB_HINT_FIELDS = [
   "web_ui_hint",
@@ -71,6 +75,20 @@ export function appendToolWebHints(message: HistoryMessage, text: string): strin
   return out;
 }
 
+/** Remove r7.actions fence from display. */
+export function stripActionsMarkup(text: string): string {
+  let out = text.replace(ACTIONS_BLOCK_RE, "").trim();
+  out = out.replace(ORPHAN_ACTIONS_FENCE_RE, "").trim();
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Remove imperative «Чтобы …, напишите:» hint lines. */
+export function stripActionHintLines(text: string): string {
+  const lines = text.split("\n");
+  const filtered = lines.filter((line) => !ACTION_HINT_LINE_RE.test(line.trim()));
+  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** Remove r7.task / r7.actions / r7.event / r7.proposal blocks, tool JSON, compare JSON, and base64 blobs from assistant chat display. */
 export function sanitizeAssistantChatText(text: string): string {
   let out = stripAgentServiceMarkup(
@@ -78,6 +96,7 @@ export function sanitizeAssistantChatText(text: string): string {
       stripR7ProposalMarkup(stripR7EventMarkup(stripTaskMarkup(text))),
     ),
   );
+  out = stripActionHintLines(out);
   out = out.replace(DOC_COMPARE_JSON_FENCE_RE, "");
   out = out.replace(DOC_COMPARE_JSON_BLOB_RE, "");
   out = out.replace(LEAKED_TASK_ARRAY_RE, "");
@@ -91,8 +110,6 @@ export function sanitizeAssistantChatText(text: string): string {
   out = out.replace(/\n{3,}/g, "\n\n").trim();
   return out;
 }
-
-export { stripActionHintLines };
 
 function dedupeDiskSaveAck(text: string): string {
   const lines = text.split("\n");

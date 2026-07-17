@@ -7,8 +7,6 @@ export type PanelLayout = "default" | "side";
 export interface PluginFeatures {
   /** Live SSE token streaming during assistant turns. */
   sseStreaming: boolean;
-  /** Layer 1 chat triggers + layer 2 intent-gated insert/download buttons. */
-  actionButtons: boolean;
   /** Shell/chat panel scroll layout (`side` = inside-mode scroll). */
   panelLayout: PanelLayout;
   /** Source variant label (informational). */
@@ -18,22 +16,18 @@ export interface PluginFeatures {
 const VARIANT_PRESETS: Record<PluginVariant, Omit<PluginFeatures, "variant">> = {
   base: {
     sseStreaming: false,
-    actionButtons: false,
     panelLayout: "default",
   },
   btn: {
     sseStreaming: false,
-    actionButtons: true,
     panelLayout: "default",
   },
   btn_stream: {
     sseStreaming: true,
-    actionButtons: true,
     panelLayout: "default",
   },
   side: {
     sseStreaming: false,
-    actionButtons: false,
     panelLayout: "side",
   },
 };
@@ -50,7 +44,6 @@ function readLocalOverride(): Partial<PluginFeatures> | null {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const out: Partial<PluginFeatures> = {};
     if (typeof parsed.sseStreaming === "boolean") out.sseStreaming = parsed.sseStreaming;
-    if (typeof parsed.actionButtons === "boolean") out.actionButtons = parsed.actionButtons;
     if (parsed.panelLayout === "default" || parsed.panelLayout === "side") {
       out.panelLayout = parsed.panelLayout;
     }
@@ -80,7 +73,6 @@ export function getPluginFeatures(): PluginFeatures {
   return {
     variant: BUILD_VARIANT,
     sseStreaming: legacySse ?? override?.sseStreaming ?? preset.sseStreaming,
-    actionButtons: override?.actionButtons ?? preset.actionButtons,
     panelLayout: override?.panelLayout ?? preset.panelLayout,
   };
 }
@@ -97,7 +89,6 @@ export function savePluginFeatures(partial: Partial<PluginFeatures>): PluginFeat
     FEATURES_STORAGE_KEY,
     JSON.stringify({
       sseStreaming: next.sseStreaming,
-      actionButtons: next.actionButtons,
       panelLayout: next.panelLayout,
     }),
   );

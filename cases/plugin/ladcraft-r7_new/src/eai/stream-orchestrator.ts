@@ -1,4 +1,5 @@
 import {
+  getStreamingApplyText,
   getStreamingVisibleText,
   STREAMING_WORKING_PLACEHOLDER,
 } from "../apply/content-extract";
@@ -7,7 +8,7 @@ import type { ChatMessage } from "../ui/chat";
 
 export interface StreamOrchestratorHooks {
   getMessages: () => ChatMessage[];
-  setMessageText: (messageId: string, text: string) => void;
+  setMessageText: (messageId: string, text: string, applyText?: string) => void;
   upsertAssistantBubble: (messageId: string) => void;
   patchStreamingDom: (messageId: string, text: string, finalize?: boolean) => boolean;
   renderChat: () => void;
@@ -108,10 +109,11 @@ export class StreamOrchestrator {
       clearTimeout(this.deltaFlushTimer);
       this.deltaFlushTimer = null;
     }
+    const applyText = getStreamingApplyText(this.buffer);
     const displayText = getStreamingVisibleText(this.buffer);
     if (!displayText && !finalize) return;
     const text = displayText || STREAMING_WORKING_PLACEHOLDER;
-    this.hooks.setMessageText(messageId, text);
+    this.hooks.setMessageText(messageId, text, applyText || undefined);
     const patched = this.hooks.patchStreamingDom(messageId, text, finalize);
     if (!patched && !finalize) this.hooks.renderChat();
   }
