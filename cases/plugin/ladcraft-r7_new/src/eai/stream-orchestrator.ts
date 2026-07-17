@@ -9,7 +9,7 @@ export interface StreamOrchestratorHooks {
   getMessages: () => ChatMessage[];
   setMessageText: (messageId: string, text: string) => void;
   upsertAssistantBubble: (messageId: string) => void;
-  patchStreamingDom: (messageId: string, text: string) => boolean;
+  patchStreamingDom: (messageId: string, text: string, finalize?: boolean) => boolean;
   renderChat: () => void;
   isChatScreen: () => boolean;
 }
@@ -88,6 +88,8 @@ export class StreamOrchestrator {
 
   private handleMessageDone(messageId: string): void {
     if (!this.messageId) this.messageId = messageId;
+    // Keep streamed markdown; drop streaming chrome. History later only appends questions/actions.
+    this.flushDeltaPaint(messageId, true);
   }
 
   private queueDeltaPaint(messageId: string): void {
@@ -95,12 +97,23 @@ export class StreamOrchestrator {
     if (this.deltaFlushTimer != null) return;
     this.deltaFlushTimer = setTimeout(() => {
       this.deltaFlushTimer = null;
-      if (!this.hooks.isChatScreen() || this.messageId !== messageId) return;
-      const displayText = getStreamingVisibleText(this.buffer);
-      this.hooks.setMessageText(messageId, displayText);
-      const patched = this.hooks.patchStreamingDom(messageId, displayText);
-      if (!patched) this.hooks.renderChat();
+      this.flushDeltaPaint(messageId, false);
     }, DELTA_DEBOUNCE_MS);
+  }
+
+  private flushDeltaPaint(messageId: string, finalize: boolean): void {
+    if (!this.hooks.isChatScreen()) return;
+    if (this.messageId && this.messageId !== messageId) return;
+    if (this.deltaFlushTimer != null) {
+      clearTimeout(this.deltaFlushTimer);
+      this.deltaFlushTimer = null;
+    }
+    const displayText = getStreamingVisibleText(this.buffer);
+    if (!displayText && !finalize) return;
+    const text = displayText || STREAMING_WORKING_PLACEHOLDER;
+    this.hooks.setMessageText(messageId, text);
+    const patched = this.hooks.patchStreamingDom(messageId, text, finalize);
+    if (!patched && !finalize) this.hooks.renderChat();
   }
 
   private teardownUiState(): void {

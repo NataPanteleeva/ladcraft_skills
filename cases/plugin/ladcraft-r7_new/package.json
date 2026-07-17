@@ -1,6 +1,6 @@
 {
   "name": "ladcraft-r7-new",
-  "version": "0.5.2-lca4",
+  "version": "0.5.3-intent2",
   "private": true,
   "scripts": {
     "build": "npm run build:btn-stream",

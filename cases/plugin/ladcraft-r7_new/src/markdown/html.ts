@@ -109,7 +109,7 @@ function buildTableHtml(lines: string[]): string {
   }
 
   html += "</tbody></table>";
-  return html;
+  return `<div class="md-table-wrap">${html}</div>`;
 }
 
 function inlineFormat(safeHtml: string): string {

@@ -652,7 +652,20 @@ export function isAssistantReplyReady(
   if (isWaitingForUserInput(message) && hasFinalAssistantText(message)) return true;
   if (options.treatStalledAsReady && isAssistantTurnStalled(message)) return true;
   if (!hasFinalAssistantText(message)) return false;
-  return isRenderableAssistantText(extractText(message));
+
+  const visible = extractText(message);
+  // Short terminal acks («Готово.» after r7_replace_selection) must end the wait.
+  // Otherwise isSubstantiveResult rejects them (<120 chars) and the UI stays locked
+  // for the full DEFAULT_ASSISTANT_WAIT_MS (~5 min).
+  if (
+    isMessageTerminal(message) &&
+    (!message.tool_calls?.length || allToolCallsTerminal(message)) &&
+    !looksLikeInProgressReply(visible)
+  ) {
+    return true;
+  }
+
+  return isRenderableAssistantText(visible);
 }
 
 function getProgressLabel(message: HistoryMessage): string {

@@ -51,13 +51,19 @@ export function collectPendingEditorTasks(
     const tasks = filterEditorApplyTasks(extractTasksFromReply(message));
     for (const task of tasks) {
       const key = taskApplyKey(message.id, task);
-      if (appliedKeys.has(key) || seen.has(key)) continue;
+      const contentKey = taskContentKey(task);
+      if (appliedKeys.has(key) || appliedKeys.has(contentKey) || seen.has(key)) continue;
       seen.add(key);
       pending.push({ messageId: message.id, task });
     }
   }
 
   return pending;
+}
+
+/** Content-only key so intent-apply and later tool_calls dedupe the same payload. */
+export function taskContentKey(task: R7Task): string {
+  return `content:${task.type}:${JSON.stringify(task.data)}`;
 }
 
 export async function applyEditorTasks(
@@ -117,12 +123,16 @@ async function applySingleEditorTask(editorType: EditorType, task: R7Task): Prom
       }
       await applyDocumentComment(task.data.text);
       return;
-    case "paste":
-      await insertText(task.data, "cursor", "text/html");
+    case "paste": {
+      const payload = unwrapPastePayload(task.data);
+      await insertText(payload.text, payload.position, "text/html");
       return;
-    case "paste_text":
-      await insertText(task.data, "cursor", "text/plain");
+    }
+    case "paste_text": {
+      const payload = unwrapPastePayload(task.data);
+      await insertText(payload.text, payload.position, "text/plain");
       return;
+    }
     case "cell_paste":
       if (editorType !== "cell") {
         throw new Error("cell_paste только для Cell");
@@ -255,6 +265,21 @@ function extractReplaceSelectionText(
     }
   }
   return "";
+}
+
+/** Unwrap paste payload: plain string or { text, position }. */
+function unwrapPastePayload(
+  data: string | { text: string; position?: "start" | "end" | "cursor" },
+): { text: string; position: "start" | "end" | "cursor" } {
+  if (typeof data === "string") return { text: data, position: "cursor" };
+  if (data && typeof data === "object" && typeof data.text === "string") {
+    const position =
+      data.position === "start" || data.position === "end" || data.position === "cursor"
+        ? data.position
+        : "cursor";
+    return { text: data.text, position };
+  }
+  return { text: "", position: "cursor" };
 }
 
 function runEditorCommand(fn: () => unknown, fallback = "0"): Promise<string> {

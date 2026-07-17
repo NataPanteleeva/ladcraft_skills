@@ -121,19 +121,12 @@ export function findMarkdownTableStart(text: string): number {
 
 /**
  * Text safe to show while SSE is still streaming.
- * Strips r7.task/tool JSON (including partial fences) and hides markdown tables
- * until terminal history sync renders the final bubble.
+ * Strips r7.task/tool JSON (including partial fences). Tables stay visible so
+ * the final history sync only appends chrome (questions/actions), not a full rewrite.
  */
 export function getStreamingVisibleText(text: string): string {
   let visible = stripStreamingLeaks(text);
   visible = sanitizeAssistantChatText(visible);
-
-  const tableStart = findMarkdownTableStart(visible);
-  if (tableStart >= 0) {
-    const prefix = visible.slice(0, tableStart).trimEnd();
-    visible = prefix || STREAMING_TABLE_PLACEHOLDER;
-  }
-
   return visible.trim() || STREAMING_WORKING_PLACEHOLDER;
 }
 

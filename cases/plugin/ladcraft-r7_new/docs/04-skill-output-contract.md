@@ -1,17 +1,26 @@
 # Контракт вывода навыка (ladcraft-r7_new / LCA)
 
-## Primary: tool_calls
+## Primary для однократной вставки / замены выделения
 
-Навык вызывает объявленный tool (`r7_paste`, `r7_paste_text`, `r7_replace_selection`, `r7_search_replace`, `r7_add_comment`, `r7_cell_paste`).  
-Плагин читает `history.tool_calls` и auto-apply editor types.
+Плагин применяет **intent** пользователя («вставь», «да», «в конец», …) к последнему черновику в чате  
+(`src/apply/intent-apply.ts`) — **без** ожидания tool_call навыка.
 
-Handler возвращает payload, совместимый с `buildTask` / `TOOL_NAME_TO_TYPE` (см. `src/apply/tool-call-parser.ts`).
+Агент на этих фразах: краткий ack, **без** write-tools.
+
+## tool_calls (пакетные правки + fallback)
+
+| Сценарий | Канал |
+|----------|--------|
+| `search_replace` × N, `cell_paste` (карта) | **tool_calls** обязательны |
+| paste / replace_selection / add_comment | intent плагина; tools — fallback |
+
+Handler stub возвращает payload для `buildTask` / `TOOL_NAME_TO_TYPE` (`src/apply/tool-call-parser.ts`).
 
 Пример: `r7_search_replace` → `{ ok, search, replace, matchCase, data: { search, replace, matchCase } }`.
 
 ## User-facing текст
 
-- Краткий итог для пользователя **без** служебного JSON.
+- Краткий итог **без** служебного JSON.
 - Fence ```r7.task``` — только fallback.
 - Не дублировать полный tool JSON в чат.
 
@@ -30,12 +39,12 @@ Handler возвращает payload, совместимый с `buildTask` / `T
 }
 ```
 
-Агент / навык: не re-apply те же задачи; при ошибках — другой план.
+Агент / навык: не re-apply; при ошибках — другой план.
 
 ## Оформление
 
 - Plain find/replace → `r7_search_replace`.
-- HTML / оформление выделения → `r7_replace_selection` или `r7_paste` (не CharacterFormat API).
+- HTML / оформление выделения → плагин `replace_selection` / `paste` (не CharacterFormat API).
 
 ## Слой кнопок (наследие)
 

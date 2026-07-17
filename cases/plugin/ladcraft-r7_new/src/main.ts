@@ -12,7 +12,13 @@ import {
   applyEditorTasks,
   collectPendingEditorTasks,
   taskApplyKey,
+  taskContentKey,
 } from "./apply/task-runner";
+import {
+  intentApplyKey,
+  intentToR7Task,
+  resolveDocumentApplyIntent,
+} from "./apply/intent-apply";
 import {
   buildApplyEventPayload,
   feedbackNotifyKey,
@@ -76,8 +82,8 @@ class LadcraftR7App {
       if (msg) msg.text = text;
     },
     upsertAssistantBubble: (messageId) => this.upsertStreamingAssistant(messageId),
-    patchStreamingDom: (messageId, text) =>
-      updateStreamingAssistantText(this.root, messageId, text),
+    patchStreamingDom: (messageId, text, finalize) =>
+      updateStreamingAssistantText(this.root, messageId, text, { finalize: Boolean(finalize) }),
     renderChat: () => this.renderChatShell(this.chatStatus),
     isChatScreen: () => this.screen === "chat",
   });
@@ -489,6 +495,54 @@ class LadcraftR7App {
     }
   }
 
+  /**
+   * On approval phrases («вставь», «да», «в конец»…) apply the last assistant draft
+   * via Asc without waiting for agent skill tool_calls.
+   */
+  private async tryIntentApplyFromUserText(userText: string): Promise<void> {
+    if (this.screen !== "chat" || !this.sessionId) return;
+    const intent = resolveDocumentApplyIntent(userText, this.messages);
+    if (!intent) return;
+
+    const task = intentToR7Task(intent);
+    const appliedKeys = this.loadAppliedEditorTaskKeys();
+    const contentKey = taskContentKey(task);
+    const localKey = intentApplyKey(intent);
+    if (appliedKeys.has(contentKey) || appliedKeys.has(localKey)) return;
+
+    this.chatStatus = "Вставляю в документ…";
+    this.renderChatShell(this.chatStatus, true);
+
+    try {
+      const result = await applyEditorTasks(this.editorType, [task]);
+      if (!result.successfulTasks.length && !result.failed) return;
+
+      if (result.successfulTasks.length) {
+        appliedKeys.add(contentKey);
+        appliedKeys.add(localKey);
+        this.persistAppliedEditorTaskKeys(appliedKeys);
+        this.needsEditorRemount = true;
+      }
+
+      if (result.summary) {
+        this.chatStatus = result.summary;
+        this.renderChatShell(this.chatStatus, true);
+      }
+
+      if (result.applied + result.failed > 0) {
+        await this.sendApplyFeedbackQuiet(
+          result,
+          ["intent-local"],
+          result.successfulTasks.length ? result.successfulTasks : [task],
+        );
+      }
+    } catch (err) {
+      console.warn("[ladcraft-r7_new] intent apply failed", err);
+      this.chatStatus = "Не удалось применить изменение в документе";
+      this.renderChatShell(this.chatStatus, true);
+    }
+  }
+
   private async tryApplyEditorTasksFromHistory(): Promise<void> {
     if (this.screen !== "chat" || !this.sessionId || this.isSending) return;
     if (this.isServiceFeedbackInFlight) return;
@@ -510,6 +564,7 @@ class LadcraftR7App {
       const fingerprint = `${item.task.type}:${JSON.stringify(item.task.data)}`;
       if (!successFingerprints.has(fingerprint)) continue;
       appliedKeys.add(taskApplyKey(item.messageId, item.task));
+      appliedKeys.add(taskContentKey(item.task));
     }
     this.persistAppliedEditorTaskKeys(appliedKeys);
     this.needsEditorRemount = true;
@@ -939,6 +994,9 @@ class LadcraftR7App {
 
     // Avoid Asc callCommand while VFS sync is in progress (parallel → undefined).
     if (this.contextState === "syncing") return;
+    // Also skip dirty-check during send/wait — renderChatShell paints often and
+    // parallel callCommand races with document reads used by the send path.
+    if (this.isSending) return;
 
     const docKey = this.currentDocKey();
     if (this.boundDocKey && this.boundDocKey !== docKey) {
@@ -1001,6 +1059,9 @@ class LadcraftR7App {
     this.startChatPoll();
 
     try {
+      // Apply paste/replace/comment immediately from chat draft — do not wait for skill tools.
+      await this.tryIntentApplyFromUserText(text);
+
       this.teardownStreamTurn();
       this.streamOrchestrator.beginTurn();
 
@@ -1112,7 +1173,8 @@ class LadcraftR7App {
       }
 
       await this.syncChatFromServer(agentId);
-      await this.tryApplyEditorTasksFromHistory();
+      // Editor apply runs in `finally` after isSending=false — calling it here is a no-op
+      // (tryApplyEditorTasksFromHistory guards on isSending).
       this.chatStatus = this.awaitingCompareReport()
         ? "Агент выполняет сравнение..."
         : this.chatStatus.startsWith("Изменение") ||
@@ -1138,6 +1200,15 @@ class LadcraftR7App {
       this.pendingOutboundUserText = null;
       this.stopHistorySyncPoll();
       if (this.screen !== "chat") return;
+
+      // Apply r7_* tool results to the open document immediately (not only on the 2.5s poll).
+      // Skill `ok: true` only means the task was emitted — Word changes happen here.
+      try {
+        await this.tryApplyEditorTasksFromHistory();
+      } catch (err) {
+        console.warn("[ladcraft-r7_new] apply after send failed", err);
+      }
+
       if (this.awaitingCompareReport()) {
         if (this.chatStatus === "Готово") {
           this.chatStatus = "Агент выполняет сравнение...";

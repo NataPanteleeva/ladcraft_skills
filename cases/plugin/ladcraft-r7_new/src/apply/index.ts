@@ -27,8 +27,18 @@ export {
   EDITOR_AUTO_APPLY_TYPES,
   filterEditorApplyTasks,
   taskApplyKey,
+  taskContentKey,
   type EditorTaskApplyResult,
 } from "./task-runner";
+export {
+  isDocumentApplyApproval,
+  parseInsertPosition,
+  resolveDocumentApplyIntent,
+  intentToR7Task,
+  intentApplyKey,
+  extractDraftBody,
+  type DocumentApplyIntent,
+} from "./intent-apply";
 export {
   buildApplyEventPayload,
   formatR7EventBlock,

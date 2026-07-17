@@ -138,9 +138,12 @@ export function updateStreamingAssistantText(
   if (shouldShowAssistantSpinner(text, streaming)) {
     fillAssistantWorkingBody(body, text);
   } else if (text.trim()) {
-    paintMarkdownBody(body, text);
+    const md = el("div", "message-md");
+    body.appendChild(md);
+    paintMarkdownBody(md, text);
   }
   node.classList.toggle("message-streaming", streaming);
+  node.setAttribute("data-msg-text", text);
   if (stickToBottom && !userIsScrolling) {
     scrollToBottom(messagesEl);
   }
@@ -404,6 +407,14 @@ function syncMessagesList(
     const node = container.querySelector(`[data-msg-id="${cssEscape(m.id)}"]`) as HTMLElement | null;
     if (!node) continue;
     if (node.getAttribute("data-msg-fp") === fp) continue;
+
+    // Prefer in-place body/actions patch — avoids full bubble replace (pause/flicker).
+    if (m.role === "assistant" && patchAssistantMessageInPlace(node, m, callbacks, actionHandlers)) {
+      node.setAttribute("data-msg-fp", fp);
+      changed = true;
+      continue;
+    }
+
     const newNode = renderMessage(m, callbacks, actionHandlers);
     newNode.setAttribute("data-msg-id", m.id);
     newNode.setAttribute("data-msg-fp", fp);
@@ -411,6 +422,95 @@ function syncMessagesList(
     changed = true;
   }
   return changed;
+}
+
+/**
+ * Patch assistant markdown + append questions/actions without rebuilding the bubble.
+ * Widgets / choice lists still require a full replace.
+ */
+function patchAssistantMessageInPlace(
+  node: HTMLElement,
+  m: ChatMessage,
+  callbacks?: ChatViewCallbacks,
+  actionHandlers?: ActionHandlers,
+): boolean {
+  if (m.widget || m.widgetChoices?.length || m.waitingForInput) return false;
+  if (node.querySelector(".widget-host, .widget-choice-list, .widget-waiting")) return false;
+
+  const body = node.querySelector(".message-body") as HTMLElement | null;
+  if (!body) return false;
+
+  const prevText = node.getAttribute("data-msg-text");
+  const nextText = m.text;
+  const textChanged = prevText === null || prevText !== nextText;
+
+  if (textChanged) {
+    body.querySelector(".agent-working-row")?.remove();
+    let md = body.querySelector(".message-md") as HTMLElement | null;
+    if (isAssistantWorkingPlaceholder(nextText)) {
+      body.querySelector(".message-md")?.remove();
+      body.querySelector(".suggested-actions")?.remove();
+      fillAssistantWorkingBody(body, nextText);
+    } else if (nextText.trim()) {
+      if (!md) {
+        md = el("div", "message-md");
+        body.prepend(md);
+      }
+      paintMarkdownBody(md, nextText);
+    } else {
+      md?.remove();
+    }
+    node.setAttribute("data-msg-text", nextText);
+  }
+
+  syncSuggestedActions(body, m, callbacks);
+  syncMessageActions(node, m, actionHandlers);
+  node.classList.remove("message-streaming");
+  return true;
+}
+
+function syncSuggestedActions(
+  body: HTMLElement,
+  m: ChatMessage,
+  callbacks?: ChatViewCallbacks,
+): void {
+  const existing = body.querySelector(".suggested-actions");
+  const actions = m.suggestedActions;
+  if (!actions?.length || m.widget) {
+    existing?.remove();
+    return;
+  }
+  const onSend = callbacks?.onSend;
+  if (!onSend) {
+    existing?.remove();
+    return;
+  }
+  const next = renderSuggestedActions(actions, (value) => {
+    void onSend(value);
+  });
+  if (existing) {
+    existing.replaceWith(next);
+  } else {
+    body.appendChild(next);
+  }
+}
+
+function syncMessageActions(
+  node: HTMLElement,
+  m: ChatMessage,
+  actionHandlers?: ActionHandlers,
+): void {
+  const existing = node.querySelector(".message-actions");
+  if (!actionHandlers || !m.actionPlan?.blocks.length) {
+    existing?.remove();
+    return;
+  }
+  const next = renderMessageActions(m.actionPlan, actionHandlers);
+  if (existing) {
+    existing.replaceWith(next);
+  } else {
+    node.appendChild(next);
+  }
 }
 
 function cssEscape(value: string): string {
@@ -437,6 +537,7 @@ function renderMessage(
         body.appendChild(renderMarkdown(m.text));
       }
     }
+    node.setAttribute("data-msg-text", m.text);
 
     if (m.suggestedActions?.length && !m.widget) {
       const onSend = callbacks?.onSend;

@@ -1,24 +1,20 @@
 # Блок 3: Обработка ответа и вставка в R7
 
-> **ladcraft-r7_new:** primary inbound = `tool_calls`; fence `r7.task` = fallback. После apply — quiet ```r7.event```.
+> **ladcraft-r7_new / LCA:** однократная вставка/замена — **plugin intent** (`intent-apply.ts`); пакетные правки — `tool_calls`; fence `r7.task` = fallback. После apply — quiet ```r7.event```.
 
 ## Ответственность
 
-- Резолвер задач из `tool_calls` (primary) и `r7.task` (fallback) — `extractTasksFromReply`
+- Intent-apply по фразам «вставь» / «да» / позиция → Asc (не ждёт skill)
+- Резолвер задач из `tool_calls` (primary для search_replace/cell) и `r7.task` (fallback)
 - Авто-применение editor tasks + feedback `r7.event`
-- CompareReport / insert-download UI (наследие btn_stream; LCA MVP опирается на auto-apply)
-
-## Не входит
-
-- Upload документа в VFS (блок 1)
-- Обычная отправка пользовательских сообщений (блок 2) — кроме quiet service feedback
 
 ## Precedence inbound
 
-1. `parseToolCalls(message.tool_calls)` — имена `r7_paste`, `r7_search_replace`, `r7_replace_selection`, …
-2. Fenced / inline `r7.task` — только операции без коллизии fingerprint `type:JSON(data)`
+0. **User approval intent** на send (`tryIntentApplyFromUserText`) — paste / replace_selection / add_comment + position start|end|cursor
+1. `parseToolCalls(message.tool_calls)` — имена `r7_paste`, `r7_search_replace`, …
+2. Fenced / inline `r7.task` — без коллизии fingerprint
 
-Код: `src/apply/executor.ts`, `src/apply/tool-call-parser.ts`.
+Дедуп intent и tool: `content:{type}:{JSON(data)}` в `appliedKeys`.
 
 ## Авто-применение (task-runner)
 

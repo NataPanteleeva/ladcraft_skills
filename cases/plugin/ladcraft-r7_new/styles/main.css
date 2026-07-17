@@ -233,25 +233,40 @@ button:disabled {
 }
 
 .message {
-  padding: 8px 10px;
-  border-radius: 8px;
-  max-width: 95%;
+  padding: 6px 2px;
+  border-radius: 0;
+  max-width: 100%;
   white-space: pre-wrap;
   word-break: break-word;
+  border: none;
+  background: transparent;
 }
 
 .message.user {
   align-self: flex-end;
+  padding: 8px 10px;
+  border-radius: 8px;
   background: var(--primary-soft);
+  max-width: 95%;
 }
 
 .message.assistant {
-  align-self: flex-start;
-  background: #f3f4f6;
+  align-self: stretch;
+  background: transparent;
 }
 
+/* No card/frame during stream — keep chat list scrollable. */
 .message-streaming {
-  border: 1px solid var(--primary-border);
+  border: none;
+  background: transparent;
+}
+
+.md-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 6px 0;
 }
 
 .agent-working-row {

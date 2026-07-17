@@ -16,12 +16,12 @@ export type ImportAs = "paste_text" | "paste_html" | null;
 
 export interface R7PasteTask {
   type: "paste";
-  data: string;
+  data: string | { text: string; position?: "start" | "end" | "cursor" };
 }
 
 export interface R7PasteTextTask {
   type: "paste_text";
-  data: string;
+  data: string | { text: string; position?: "start" | "end" | "cursor" };
 }
 
 export interface R7CellPasteTask {

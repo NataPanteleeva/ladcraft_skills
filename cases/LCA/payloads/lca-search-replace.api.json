@@ -7,7 +7,7 @@
   "tags": [],
   "category": "productivity",
   "icon": "document",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "tools": [
     {
       "name": "r7_search_replace",

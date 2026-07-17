@@ -5,7 +5,7 @@
     "en": "Ladcraft LCA"
   },
   "guid": "asc.{A7C1D2E3-F4B5-4678-9012-LCA0R7PLUGIN1}",
-  "version": "0.5.2-lca4",
+  "version": "0.5.3-intent2",
   "variations": [
     {
       "description": "Ladcraft LCA — linguistic check chat for Word and Cell (tool_calls + r7.event)",

@@ -67,8 +67,11 @@ function toolCallToTask(call: ToolCallRecord): R7Task | null {
 
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     const obj = parsed as Record<string, unknown>;
-    if (obj.type && obj.data !== undefined) {
-      return buildTask(String(obj.type) as R7TaskType, obj.data);
+    // Accept { type, data } and { type, text } (incl. mistaken bash JSON payloads).
+    if (typeof obj.type === "string") {
+      const payload = obj.data !== undefined ? obj.data : obj;
+      const fromType = buildTask(String(obj.type) as R7TaskType, payload);
+      if (fromType) return fromType;
     }
   }
 
@@ -101,13 +104,24 @@ function normalizePayload(raw: unknown): unknown {
 function buildTask(type: R7TaskType, data: unknown): R7Task | null {
   switch (type) {
     case "paste":
-      return typeof data === "string" ? { type, data } : null;
-    case "paste_text":
-      return typeof data === "string"
-        ? { type, data }
-        : typeof (data as { text?: string })?.text === "string"
-          ? { type, data: (data as { text: string }).text }
-          : null;
+    case "paste_text": {
+      if (typeof data === "string") return { type, data };
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        const d = data as { text?: string; data?: string; position?: string };
+        const text =
+          typeof d.text === "string" ? d.text : typeof d.data === "string" ? d.data : "";
+        if (!text) return null;
+        const position =
+          d.position === "start" || d.position === "end" || d.position === "cursor"
+            ? d.position
+            : undefined;
+        if (position && position !== "cursor") {
+          return { type, data: { text, position } };
+        }
+        return { type, data: text };
+      }
+      return null;
+    }
     case "add_comment": {
       const text =
         typeof data === "string"
