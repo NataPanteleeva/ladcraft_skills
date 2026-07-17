@@ -15,10 +15,10 @@ import {
   taskContentKey,
 } from "./apply/task-runner";
 import {
-  intentApplyKey,
-  intentToR7Task,
-  resolveDocumentApplyIntent,
+  planDedupeHit,
+  resolveDocumentApplyPlan,
 } from "./apply/intent-apply";
+import { getSelectedText } from "./editor/reader";
 import {
   buildApplyEventPayload,
   feedbackNotifyKey,
@@ -496,30 +496,47 @@ class LadcraftR7App {
   }
 
   /**
-   * On approval phrases («вставь», «да», «в конец»…) apply the last assistant draft
-   * via Asc without waiting for agent skill tool_calls.
+   * On approval / «исправь …» apply last r7.proposal (or Черновик fallback) via Asc
+   * without waiting for agent skill tool_calls.
    */
   private async tryIntentApplyFromUserText(userText: string): Promise<void> {
     if (this.screen !== "chat" || !this.sessionId) return;
-    const intent = resolveDocumentApplyIntent(userText, this.messages);
-    if (!intent) return;
+    const plan = resolveDocumentApplyPlan(userText, this.messages);
+    if (!plan || !plan.tasks.length) return;
 
-    const task = intentToR7Task(intent);
     const appliedKeys = this.loadAppliedEditorTaskKeys();
-    const contentKey = taskContentKey(task);
-    const localKey = intentApplyKey(intent);
-    if (appliedKeys.has(contentKey) || appliedKeys.has(localKey)) return;
+    if (planDedupeHit(plan, appliedKeys)) return;
 
-    this.chatStatus = "Вставляю в документ…";
+    // Already applied same content via earlier tool_calls / intent.
+    const pendingTasks = plan.tasks.filter((task) => !appliedKeys.has(taskContentKey(task)));
+    if (!pendingTasks.length) {
+      for (const k of plan.dedupeKeys) appliedKeys.add(k);
+      this.persistAppliedEditorTaskKeys(appliedKeys);
+      return;
+    }
+
+    if (plan.requireSelection) {
+      const sel = (await getSelectedText()).trim();
+      if (!sel) {
+        this.chatStatus =
+          "Выделите фрагмент в документе и повторите «да» / «вставь»";
+        this.renderChatShell(this.chatStatus, true);
+        return;
+      }
+    }
+
+    this.chatStatus = plan.statusHint || "Вставляю в документ…";
     this.renderChatShell(this.chatStatus, true);
 
     try {
-      const result = await applyEditorTasks(this.editorType, [task]);
+      const result = await applyEditorTasks(this.editorType, pendingTasks);
       if (!result.successfulTasks.length && !result.failed) return;
 
       if (result.successfulTasks.length) {
-        appliedKeys.add(contentKey);
-        appliedKeys.add(localKey);
+        for (const task of result.successfulTasks) {
+          appliedKeys.add(taskContentKey(task));
+        }
+        for (const k of plan.dedupeKeys) appliedKeys.add(k);
         this.persistAppliedEditorTaskKeys(appliedKeys);
         this.needsEditorRemount = true;
       }
@@ -533,7 +550,7 @@ class LadcraftR7App {
         await this.sendApplyFeedbackQuiet(
           result,
           ["intent-local"],
-          result.successfulTasks.length ? result.successfulTasks : [task],
+          result.successfulTasks.length ? result.successfulTasks : pendingTasks,
         );
       }
     } catch (err) {

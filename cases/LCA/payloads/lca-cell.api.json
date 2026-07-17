@@ -2,12 +2,12 @@
   "skill": "lca-cell",
   "title": "lca-cell",
   "name": "lca-cell",
-  "description": "Предпросмотр значений ячеек в чате → r7_cell_paste только после одобрения; hint lca-cell.",
-  "detailed_description": "Заполни ячейки Cell.\n\n## Шаг A\nПокажи таблицу/список пар адрес → значение в чате. **Без** `r7_cell_paste`.\n\nСпроси: «Записать эти значения в таблицу? („да“ / „вставь“ / „одобряю“)».\n\n## Шаг B\nТолько после согласия: **`r7_cell_paste`** с объектом `{ \"A1\": \"…\", \"B2\": 42 }` (≤200 адресов).\nТолько изменяемые ячейки. Word → другие навыки LCA.",
+  "description": "Предпросмотр ячеек + r7.proposal cell_map; запись делает плагин после «да»; hint lca-cell.",
+  "detailed_description": "Заполни ячейки Cell.\n\n## Шаг A\nПокажи таблицу/список адрес → значение. **Без** `r7_cell_paste`.\nВ конце proposal (≤200 адресов):\n\n```r7.proposal\n{\"schema\":\"r7.proposal/v1\",\"kind\":\"cell_map\",\"data\":{\"A1\":\"…\",\"B2\":42}}\n```\n\nСпроси: «Записать эти значения в таблицу? („да“ / „вставь“ / „одобряю“)».\n\n## Шаг B\nПлагин применит cell_map сам. Ты: краткий ack. **Не** вызывай tool, кроме сбоя / отсутствия proposal.",
   "tags": [],
   "category": "productivity",
   "icon": "document",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "tools": [
     {
       "name": "r7_cell_paste",

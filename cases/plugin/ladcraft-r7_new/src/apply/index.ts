@@ -33,12 +33,23 @@ export {
 export {
   isDocumentApplyApproval,
   parseInsertPosition,
+  parseFixIntent,
+  resolveDocumentApplyPlan,
   resolveDocumentApplyIntent,
   intentToR7Task,
   intentApplyKey,
+  planDedupeHit,
   extractDraftBody,
   type DocumentApplyIntent,
+  type DocumentApplyPlan,
+  type FixIntent,
 } from "./intent-apply";
+export {
+  parseR7Proposal,
+  stripR7ProposalMarkup,
+  type R7ProposalV1,
+  type ProposalFindingItem,
+} from "./proposal-parse";
 export {
   buildApplyEventPayload,
   formatR7EventBlock,

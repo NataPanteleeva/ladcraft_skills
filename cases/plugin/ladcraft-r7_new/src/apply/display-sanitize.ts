@@ -1,6 +1,7 @@
 import type { HistoryMessage } from "../eai/session";
 import { stripTaskMarkup } from "./task-parse";
 import { stripR7EventMarkup } from "./apply-feedback";
+import { stripR7ProposalMarkup } from "./proposal-parse";
 import { stripActionsMarkup, stripActionHintLines } from "./suggested-actions";
 
 const LEAKED_TASK_ARRAY_RE =
@@ -70,10 +71,12 @@ export function appendToolWebHints(message: HistoryMessage, text: string): strin
   return out;
 }
 
-/** Remove r7.task / r7.actions / r7.event blocks, tool JSON, compare JSON, and base64 blobs from assistant chat display. */
+/** Remove r7.task / r7.actions / r7.event / r7.proposal blocks, tool JSON, compare JSON, and base64 blobs from assistant chat display. */
 export function sanitizeAssistantChatText(text: string): string {
   let out = stripAgentServiceMarkup(
-    stripActionsMarkup(stripR7EventMarkup(stripTaskMarkup(text))),
+    stripActionsMarkup(
+      stripR7ProposalMarkup(stripR7EventMarkup(stripTaskMarkup(text))),
+    ),
   );
   out = out.replace(DOC_COMPARE_JSON_FENCE_RE, "");
   out = out.replace(DOC_COMPARE_JSON_BLOB_RE, "");

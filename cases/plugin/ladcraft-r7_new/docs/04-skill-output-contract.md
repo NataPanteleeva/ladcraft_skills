@@ -1,53 +1,64 @@
 # Контракт вывода навыка (ladcraft-r7_new / LCA)
 
-## Primary для однократной вставки / замены выделения
+## Dual payload
 
-Плагин применяет **intent** пользователя («вставь», «да», «в конец», …) к последнему черновику в чате  
-(`src/apply/intent-apply.ts`) — **без** ожидания tool_call навыка.
+Каждый черновик правок в чате = **человеческий markdown** + скрытый fence **`r7.proposal/v1`** (UI strips, как `r7.event`).
 
-Агент на этих фразах: краткий ack, **без** write-tools.
+Плагин на одобрении берёт **proposal**, не «всё окно». Fallback: секция **Черновик:** без proposal.
 
-## tool_calls (пакетные правки + fallback)
+## Primary: plugin intent (`intent-apply.ts`)
+
+| Фраза пользователя | Proposal | Действие плагина |
+|--------------------|----------|------------------|
+| «вставь» / «в конец» / «да» | `kind=blob` | paste / paste_text (+ position) |
+| «да» / «замени» | `blob` + `preferReplaceSelection` | replace_selection (нужно выделение) |
+| «исправь все» / «исправь 1, 3» | `kind=findings` | search_replace × выбранные id |
+| «да» / «запиши» | `kind=cell_map` | cell_paste |
+| «да» / «добавь» | `kind=comment` | add_comment (нужно выделение) |
+
+Агент на этих фразах: **краткий ack, без write-tools** (anti double-apply).
+
+Короткое «да» после **findings** — **не** применяет; нужно «исправь все» / «исправь N».
+
+## tool_calls (fallback)
 
 | Сценарий | Канал |
 |----------|--------|
-| `search_replace` × N, `cell_paste` (карта) | **tool_calls** обязательны |
-| paste / replace_selection / add_comment | intent плагина; tools — fallback |
+| «замени X на Y» без proposal | `r7_search_replace` |
+| proposal отсутствует / битый | tools или отказ |
+| paste / replace / findings / cell | intent primary; tools — запасной |
 
-Handler stub возвращает payload для `buildTask` / `TOOL_NAME_TO_TYPE` (`src/apply/tool-call-parser.ts`).
+## Пример findings
 
-Пример: `r7_search_replace` → `{ ok, search, replace, matchCase, data: { search, replace, matchCase } }`.
+````markdown
+| № | Было | Стало |
+| 1 | … | … |
 
-## User-facing текст
+Что дальше? — **исправь все** / **исправь 1, 3**
 
-- Краткий итог **без** служебного JSON.
-- Fence ```r7.task``` — только fallback.
-- Не дублировать полный tool JSON в чат.
+```r7.proposal
+{"schema":"r7.proposal/v1","kind":"findings","revision":1,"items":[{"id":1,"op":"search_replace","search":"…","replace":"…"}]}
+```
+````
+
+## Пример blob
+
+````markdown
+**Черновик:**
+текст
+
+```r7.proposal
+{"schema":"r7.proposal/v1","kind":"blob","op":"paste_text","text":"текст","defaultPosition":"cursor"}
+```
+````
 
 ## После apply: `r7.event`
 
-Плагин шлёт:
-
-```r7.event
-{
-  "schema": "r7.event/v1",
-  "kind": "apply_result",
-  "applied": 1,
-  "failed": 0,
-  "errors": [],
-  "tasks": [{ "type": "search_replace", "data": { "search": "…", "replace": "…" } }]
-}
-```
-
-Агент / навык: не re-apply; при ошибках — другой план.
+Плагин шлёт скрытый `apply_result`. Агент: не re-apply; не дублируй таблицы.
 
 ## Оформление
 
-- Plain find/replace → `r7_search_replace`.
-- HTML / оформление выделения → плагин `replace_selection` / `paste` (не CharacterFormat API).
-
-## Слой кнопок (наследие)
-
-Intent-gated insert/download и `r7.actions` остаются как в btn_stream; для LCA основной продуктовый путь — auto-apply tools + event loop.
+- Plain find/replace → search_replace (глобальный по документу; `search` делай уникальным).
+- HTML / перепись выделения → replace_selection / paste.
 
 Агент: [`cases/LCA/`](../../LCA/).
