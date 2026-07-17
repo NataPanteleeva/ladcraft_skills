@@ -115,7 +115,7 @@ export async function prepareOutbound(
     ? normalizeTemplateSelection(userText, history)
     : userText;
 
-  const bashPath = documentBashPath(context.fileName);
+  const bashPath = documentBashPath(context.fileName, options.sessionId);
   const isCompareTurn =
     history.length > 0 &&
     resolveTemplateSelection(userText, history).matched;

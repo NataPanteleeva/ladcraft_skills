@@ -5,10 +5,11 @@ import type { EaiClient } from "../eai/client";
 import {
   getVfsFileIfExists,
   isVfsFileReady,
-  uploadDocumentContext,
+  uploadDocumentContextWithRecovery,
   waitForParsing,
 } from "../eai/vfs";
 import { getSelectedText } from "../editor/reader";
+import { documentBashPath, documentUploadVfsPath } from "./message-payload";
 import type { FileRef } from "./types";
 
 export const SELECTION_SCHEMA = "r7-selection/v1" as const;
@@ -69,10 +70,12 @@ export async function uploadSelectionContext(
   if (!sessionId) {
     throw new Error("Нет session_id для загрузки выделения в VFS");
   }
-  const uploaded = await uploadDocumentContext(client, fileName, serialized, {
+  const vfsPath = documentUploadVfsPath(fileName, sessionId);
+  const uploaded = await uploadDocumentContextWithRecovery(client, fileName, serialized, {
     scope: "session",
     sessionId,
     sync: true,
+    path: vfsPath,
   });
   let fileId = uploaded.file_id;
   if (uploaded.parsing_status !== "complete") {
@@ -85,7 +88,7 @@ export async function uploadSelectionContext(
 
   return {
     file_id: fileId,
-    file_name: fileName,
+    file_name: documentBashPath(fileName, sessionId),
     mime_type: "application/json",
   };
 }

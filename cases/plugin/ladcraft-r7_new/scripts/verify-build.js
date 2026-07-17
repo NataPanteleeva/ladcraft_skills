@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const EXPECT_VERSION = "0.5.4-proposal1";
+const EXPECT_VERSION = "0.5.5-vfs1";
 
 function fail(msg) {
   console.error("FAIL:", msg);

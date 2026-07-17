@@ -15,8 +15,18 @@
 ## Контракт с плагином
 
 1. Плагин передаёт snapshot / выделение (`mentioned.files`, supplements).
-2. Навыки вызывают **tool_calls** (`r7_*`); плагин auto-apply в Word/Cell.
+2. Навыки кладут `r7.proposal` + markdown; плагин intent-apply / tool_calls в Word/Cell.
 3. После apply плагин шлёт скрытый ```r7.event``` (`apply_result`) — агент продолжает диалог без re-apply.
+
+### Workspace vs session (UI «Файлы агента»)
+
+| Видно в UI | Ожидание |
+|------------|----------|
+| `methodology/`, `rules/`, `style/`, `prompts/` | **Общие** между сессиями — БЗ агента |
+| `r7/r7-word_*.json` (snapshot) | Привязан к **сессии** чата; path `/session/r7/{sessionSeg}/…`. Несколько старых файлов — хвосты прошлых чатов (плагин чистит best-effort при закрытии) |
+
+Если плагин пишет «Документ не в VFS / путь занят» — нажмите **«Синхр. документ»** или откройте новый чат (с плагина ≥ 0.5.5-vfs1 коллизии path устраняются sessionSeg + delete/retry).
+
 
 ## Навыки
 

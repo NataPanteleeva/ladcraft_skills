@@ -1,5 +1,6 @@
 import { buildDocKey, getConfig, resolveTransferProfile, saveConfig, usesDiskRef, usesVfsSnapshot, type EditorType } from "./config";
 import {
+  cleanupSessionDocumentPath,
   ensureDocumentContext,
   isContextBoundToDocument,
   isDocumentDirty,
@@ -30,12 +31,14 @@ import { applyPanelLayoutClass, getPluginFeatures } from "./features";
 import {
   clearDocumentContext,
   clearSessionForDoc,
+  getDocumentContext,
 } from "./context/registry";
 import {
   EaiClient,
   getStoredUserId,
   saveUser,
 } from "./eai/client";
+import { isVfsPathConflictError } from "./eai/vfs";
 import { loadCatalog, type CatalogResult } from "./eai/catalog";
 import {
   createSession,
@@ -251,12 +254,22 @@ class LadcraftR7App {
       const docKey = this.currentDocKey();
       const docSwitched =
         this.boundDocKey != null && this.boundDocKey !== docKey;
-      const ctx = await ensureDocumentContext(this.client, this.editorType, {
-        sessionId: this.sessionId,
-        forceReupload: options?.forceReupload || docSwitched,
-        docKey,
-      });
-      this.applyContext(ctx, docKey);
+      const run = async (forceReupload: boolean) => {
+        const ctx = await ensureDocumentContext(this.client, this.editorType, {
+          sessionId: this.sessionId!,
+          forceReupload: forceReupload || docSwitched,
+          docKey,
+        });
+        this.applyContext(ctx, docKey);
+      };
+      try {
+        await run(Boolean(options?.forceReupload));
+      } catch (err) {
+        // Path occupied / stale binding — one forced re-upload before failing the chat.
+        if (!isVfsPathConflictError(err) || options?.forceReupload) throw err;
+        clearDocumentContext(getStoredUserId(), docKey);
+        await run(true);
+      }
     } catch (err) {
       this.contextState = prevState === "syncing" ? "error" : prevState;
       throw err;
@@ -397,10 +410,17 @@ class LadcraftR7App {
     if (resolvedAgentId) agentsToClear.add(resolvedAgentId);
 
     const userId = getStoredUserId();
+    const docKey = this.currentDocKey();
+    const prevCtx = getDocumentContext(userId, docKey);
+    // Best-effort: free session snapshot path so the next chat does not collide.
+    if (prevCtx?.vfsFilePath && prevCtx.vfsSessionId) {
+      void cleanupSessionDocumentPath(this.client, prevCtx);
+    }
+
     for (const id of agentsToClear) {
       clearSessionForDoc(userId, this.buildSessionKey(id));
     }
-    clearDocumentContext(userId, this.currentDocKey());
+    clearDocumentContext(userId, docKey);
 
     this.sessionId = null;
     this.sessionAgentId = null;
@@ -1104,21 +1124,37 @@ class LadcraftR7App {
         }
       } catch (ctxErr) {
         const msg = ctxErr instanceof Error ? ctxErr.message : String(ctxErr);
-        console.error("Context sync before send failed:", ctxErr);
-        this.clearContext();
-        this.contextState = "error";
-        this.contextError = msg;
+        // One more forced sync before failing the user turn.
         if (usesVfsSnapshot(this.currentTransferProfile())) {
-          throw new Error(
-            `Документ не в VFS: ${this.contextError}. Нажмите «Синхр. документ».`,
-          );
+          try {
+            await this.withSendTimeout(
+              this.syncDocumentContextForChat({ forceReupload: true }),
+              90_000,
+              "Повторная синхронизация документа",
+            );
+          } catch (retryErr) {
+            const retryMsg =
+              retryErr instanceof Error ? retryErr.message : String(retryErr);
+            console.error("Context sync before send failed:", retryErr);
+            this.clearContext();
+            this.contextState = "error";
+            this.contextError = retryMsg;
+            throw new Error(
+              `Документ не в VFS: ${this.contextError}. Нажмите «Синхр. документ».`,
+            );
+          }
+        } else {
+          console.error("Context sync before send failed:", ctxErr);
+          this.clearContext();
+          this.contextState = "error";
+          this.contextError = msg;
+          if (usesDiskRef(this.currentTransferProfile())) {
+            throw new Error(
+              `Контекст диска: ${this.contextError}. Нажмите «Обновить контекст».`,
+            );
+          }
+          throw new Error(msg);
         }
-        if (usesDiskRef(this.currentTransferProfile())) {
-          throw new Error(
-            `Контекст диска: ${this.contextError}. Нажмите «Обновить контекст».`,
-          );
-        }
-        throw new Error(msg);
       }
 
       const activeSessionId = this.sessionId;

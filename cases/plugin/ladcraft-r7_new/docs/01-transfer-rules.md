@@ -20,18 +20,31 @@
 
 ## Обязательные правила
 
-- [ ] Один канонический `file_id` на документ — **session VFS** (привязка к `session_id` чата, поле `vfsSessionId` в registry)
-- [ ] Upload: `scope=session`, `session_id`, path `/r7/r7-{docKey}.json`, **`sync:true`** — HTTP 200 = файл в mount
+- [ ] Один канонический `file_id` на документ в **текущей** session VFS (`vfsSessionId` в registry)
+- [ ] Upload: `scope=session`, `session_id`, path **`/r7/{sessionSeg}/{fileName}`**, **`sync:true`**
+  - `sessionSeg` = первые 8–12 символов `session_id` (см. `sessionPathSegment`)
+  - Имя файла: `r7-{sanitizedDocKey}.json` / `r7-selection_{docKey}.json`
+- [ ] Перед POST upload: best-effort `DELETE /v1/agent/vfs/folders` на целевой path; при «путь занят» — delete + один retry (`uploadDocumentContextWithRecovery`)
 - [ ] Перед send: upload → `parsing_status: complete` → `verifyFileReadable(file_id)` (schema + `body.text` ≥ 100 символов)
 - [ ] **Открытие чата:** `createSession` → `ensureDocumentContext` (`forceReupload`) → только потом `chatReady` и ввод
-- [ ] Каждый `POST …/message` (включая 1-й): `mentioned.files[]` с `file_id`, `file_name` = `/session/r7/…`, `mime_type: application/json`
+- [ ] Каждый `POST …/message` (включая 1-й): `mentioned.files[]` с `file_id`, `file_name` = **`/session/r7/{sessionSeg}/…`**, `mime_type: application/json`
 - [ ] `files.editor` — профиль `editor-mount` (r7-analyze); для doc-compare **не отправлять**
 - [ ] `content` — текст задания пользователя; **не** вкладывать полный документ в `content`
 - [ ] Допустим supplement выделения в `content` (блок `[Контекст R7: выделенный фрагмент]`)
-- [ ] На **compare-turn** (выбор шаблона из picker): допустим supplement **пути** в `content` — блок `[Контекст R7: snapshot path]` с одной строкой `session_file: /session/r7/…` (без `body.text`; тот же путь, что `mentioned.files[0].file_name`)
-- [ ] Имена: документ `r7-{sanitizedDocKey}.json`, выделение `r7-selection_{docKey}.json`
-- [ ] Snapshot: `schema: r7-snapshot/v1`, обязателен `body.text`; навыки читают через **`read_r7_snapshot_text`** (skill VFS)
+- [ ] На **compare-turn**: supplement **пути** — `session_file: /session/r7/{sessionSeg}/…`
+- [ ] Snapshot: `schema: r7-snapshot/v1`, обязателен `body.text`
 - [ ] Точка изменений: `src/transfer/` (`prepareOutbound` — единая entry point)
+
+## Workspace vs session (UI «Файлы агента»)
+
+| Путь | Scope | Между сессиями чата |
+|------|-------|---------------------|
+| `/workspace/methodology`, `rules`, `style`, `prompts` | workspace агента | **Общие** (БЗ) — так и должно быть |
+| `/session/r7/{sessionSeg}/r7-word_….json` | session | **Свой** snapshot на чат; path уникален по sessionSeg |
+| старые `r7-word_*` без segment | legacy | Best-effort delete при close / reupload |
+
+Не путать: одинаковые правила в разных чатах — норма; одинаковые `r7-word_*` без segment — баг коллизии (исправлено sessionSeg).
+
 
 ## Отклонено (схема 1)
 

@@ -37,9 +37,36 @@ export function shouldMentionDocumentFiles(
   return true;
 }
 
-/** Canonical bash path for session-scoped R7 snapshot (always from fileName, not API file_path). */
-export function documentBashPath(fileName: string): string {
+/**
+ * Short stable segment from Ladcraft session id for VFS path isolation.
+ * Keeps paths unique across chats without embedding the full id.
+ */
+export function sessionPathSegment(sessionId: string): string {
+  const cleaned = sessionId.trim().replace(/[^a-zA-Z0-9_-]+/g, "");
+  if (!cleaned) return "nosession";
+  return cleaned.slice(0, 12);
+}
+
+/**
+ * Physical upload path inside session scope: `/r7/{segment}/{fileName}`.
+ * Avoids path collisions when the same document is re-uploaded in a new chat.
+ */
+export function documentUploadVfsPath(fileName: string, sessionId: string): string {
   const base = fileName.trim().replace(/^\/+/, "").replace(/^r7\//, "");
+  const seg = sessionPathSegment(sessionId);
+  return `/r7/${seg}/${base}`;
+}
+
+/**
+ * Canonical bash path for session-scoped R7 snapshot.
+ * Prefer passing sessionId so the path matches the upload location.
+ */
+export function documentBashPath(fileName: string, sessionId?: string): string {
+  const base = fileName.trim().replace(/^\/+/, "").replace(/^r7\//, "");
+  if (sessionId?.trim()) {
+    return `/session/r7/${sessionPathSegment(sessionId)}/${base}`;
+  }
+  // Legacy: fileName may already include segment (`seg/r7-word_….json`) or be bare.
   return `/session/r7/${base}`;
 }
 

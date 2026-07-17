@@ -44,6 +44,58 @@ export interface VfsUploadOptions {
   workspaceId?: string;
   /** Wait until file is mounted in VFS before returning (session uploads). */
   sync?: boolean;
+  /**
+   * Full destination path within the scope (e.g. `/r7/{sessionSeg}/{fileName}`).
+   * Defaults to `/r7/${fileName}` for legacy callers.
+   */
+  path?: string;
+}
+
+export interface VfsDeleteOptions {
+  scope: VfsScope;
+  path: string;
+  sessionId?: string;
+  workspaceId?: string;
+}
+
+/** True when upload/update failed because the VFS path is already taken. */
+export function isVfsPathConflictError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (message.includes("занят")) return true;
+  if (message.includes("occupied")) return true;
+  if (message.includes("already exists")) return true;
+  if (message.includes("path already")) return true;
+  if (message.includes("целевой путь")) return true;
+  return false;
+}
+
+/**
+ * Delete a file or folder at path (DELETE /v1/agent/vfs/folders — no body).
+ * Best-effort: returns false on not-found / soft failures without throwing.
+ */
+export async function deleteVfsPath(
+  client: EaiClient,
+  options: VfsDeleteOptions,
+): Promise<boolean> {
+  const path = options.path.trim();
+  if (!path) return false;
+  const params = new URLSearchParams({ scope: options.scope, path });
+  if (options.scope === "session" && options.sessionId) {
+    params.set("session_id", options.sessionId);
+  }
+  if (options.workspaceId) {
+    params.set("workspace_id", options.workspaceId);
+  }
+  try {
+    await client.request(`/v1/agent/vfs/folders?${params.toString()}`, {
+      method: "DELETE",
+    });
+    return true;
+  } catch (err) {
+    if (isVfsNotFoundError(err)) return false;
+    console.warn("[ladcraft-r7_new] deleteVfsPath failed", err);
+    return false;
+  }
 }
 
 /** Upload document snapshot as JSON (user VFS by default — stable across sessions). */
@@ -54,10 +106,11 @@ export async function uploadDocumentContext(
   options: VfsUploadOptions = {},
 ): Promise<VfsUploadResult> {
   const scope = options.scope ?? "user";
+  const destPath = (options.path?.trim() || `/r7/${fileName}`).replace(/\/{2,}/g, "/");
   const form = new FormData();
   const blob = new Blob([content], { type: "application/json" });
   form.append("file", blob, fileName);
-  form.append("path", `/r7/${fileName}`);
+  form.append("path", destPath);
   form.append("scope", scope);
   if (options.workspaceId) form.append("workspace_id", options.workspaceId);
   if (scope === "session" && options.sessionId) {
@@ -70,6 +123,43 @@ export async function uploadDocumentContext(
     method: "POST",
     formData: form,
   });
+}
+
+/**
+ * Upload with best-effort delete of target path, then one retry on path conflict.
+ */
+export async function uploadDocumentContextWithRecovery(
+  client: EaiClient,
+  fileName: string,
+  content: string,
+  options: VfsUploadOptions = {},
+): Promise<VfsUploadResult> {
+  const scope = options.scope ?? "user";
+  const destPath = (options.path?.trim() || `/r7/${fileName}`).replace(/\/{2,}/g, "/");
+  await deleteVfsPath(client, {
+    scope,
+    path: destPath,
+    sessionId: options.sessionId,
+    workspaceId: options.workspaceId,
+  });
+  try {
+    return await uploadDocumentContext(client, fileName, content, {
+      ...options,
+      path: destPath,
+    });
+  } catch (err) {
+    if (!isVfsPathConflictError(err)) throw err;
+    await deleteVfsPath(client, {
+      scope,
+      path: destPath,
+      sessionId: options.sessionId,
+      workspaceId: options.workspaceId,
+    });
+    return uploadDocumentContext(client, fileName, content, {
+      ...options,
+      path: destPath,
+    });
+  }
 }
 
 /** Update existing VFS file content. */

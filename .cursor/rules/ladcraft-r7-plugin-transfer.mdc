@@ -11,9 +11,12 @@ alwaysApply: false
 
 ### Куда кладёт плагин документ B
 
-- `POST /v1/agent/vfs/upload`, `scope=session`, `path=/r7/r7-{sanitizedDocKey}.json`, **`sync:true`**
-- Bash-path: **`/session/r7/r7-{sanitizedDocKey}.json`**
+- `POST /v1/agent/vfs/upload`, `scope=session`, `path=/r7/{sessionSeg}/r7-{sanitizedDocKey}.json`, **`sync:true`**
+- `sessionSeg` = первые 8–12 символов `session_id` (изоляция path между чатами)
+- Bash-path: **`/session/r7/{sessionSeg}/r7-{sanitizedDocKey}.json`**
 - `docKey` = `{editor}:{url|title}` → sanitize (`:` → `_`, max 80) → `r7-word_7b6db4c8….json`
+- При коллизии path: delete + retry (`uploadDocumentContextWithRecovery`)
+
 
 ### Что приходит в message
 
@@ -47,3 +50,4 @@ Upload может завершиться **после** старта агент�
 - Передача данных / snapshot B: `cases/doc_compare/docs/r7-plugin-data-contract.md`
 - **Сравнение + список шаблонов (одобрено):** `cases/compare-r7/docs/approved-r7-document-compare.md`
 - Навык compare: `cases/compare-r7/skills/r7-compare-toolkit/`
+- **API R7 Office (редактор, плагин, диск):** `cases/knowledge-base/r7-api-handoff/` — см. `ladcraft-r7-office-api.mdc`

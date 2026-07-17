@@ -5,22 +5,20 @@
 
 **Источник истины** — snapshot плагина:
 
-- `session_file` = дословно `mentioned.files[0].file_name` (обычно `/session/r7/r7-word_….json`);
-- если путь как `/workspace/r7/…` — для `bash head` используй basename под `/session/r7/`;
+- `session_file` = дословно `mentioned.files[0].file_name` (обычно `/session/r7/{sessionSeg}/r7-word_….json`);
+- `sessionSeg` — короткий id чата; путь **меняется** между сессиями — всегда бери из `mentioned.files`, не из памяти;
 - блок `[Контекст R7: snapshot path]` / выделение `[Контекст R7: выделенный фрагмент]` — тот же контекст.
 
 **Запрещено:** `/workspace/r7/` как источник истины; `find` / `ls` / перебор JSON по snapshot; выдумывать текст без успешного READ.
 
-## Workspace (БЗ)
+## Workspace (БЗ) vs session snapshot
 
 Локальный канон `cases/LCA/workspace/` → в агенте `/workspace/`.
 
-| Путь | Назначение |
-|------|------------|
-| `/workspace/methodology/contexts.md` | вид документа → slug |
-| `/workspace/rules/{slug}/RULES.md` | правила |
-| `/workspace/style/{slug}/sample.md` | образец |
-| `/workspace/checklists/…` | чек-листы |
+| Что | Где | Между чатами |
+|-----|-----|--------------|
+| Правила / стили / methodology | `/workspace/methodology`, `rules/{slug}`, `style/{slug}`, `checklists` | **Общие** (норма) |
+| Snapshot открытого Word | `/session/r7/{sessionSeg}/…` | **Свой** на сессию |
 
 Перед проверкой/генерацией: `head` contexts → slug → RULES (и style для generate). Не выдумывай нормы вне этих файлов.
 

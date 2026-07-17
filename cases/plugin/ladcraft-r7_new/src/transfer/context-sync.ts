@@ -10,16 +10,18 @@ import {
 import type { EaiClient } from "../eai/client";
 import { getStoredUserId } from "../eai/client";
 import {
+  deleteVfsPath,
   getVfsFile,
   getVfsFileIfExists,
   isVfsFileReady,
   isVfsNotFoundError,
   updateDocumentContext,
-  uploadDocumentContext,
+  uploadDocumentContextWithRecovery,
   verifyFileReadable,
   waitForParsing,
 } from "../eai/vfs";
 import { readDocumentSnapshot, type DocumentSnapshot } from "../editor/reader";
+import { documentUploadVfsPath } from "./message-payload";
 import { serializeSnapshot, normalizeContentHash } from "./snapshot";
 
 const CURRENT_VFS_STORAGE = "session" as const;
@@ -34,6 +36,7 @@ export interface EnsureContextResult {
   contentHash: string;
   skippedUpload: boolean;
   snapshot?: DocumentSnapshot;
+  sessionId?: string;
 }
 
 export interface EnsureContextOptions {
@@ -115,6 +118,21 @@ function requireSessionId(sessionId: string | undefined): string {
 }
 
 /**
+ * Best-effort remove of a previous session snapshot path (on chat close / session switch).
+ */
+export async function cleanupSessionDocumentPath(
+  client: EaiClient,
+  entry: Pick<DocumentContextEntry, "vfsFilePath" | "vfsSessionId" | "fileName"> | null,
+): Promise<void> {
+  if (!entry?.vfsFilePath || !entry.vfsSessionId) return;
+  await deleteVfsPath(client, {
+    scope: "session",
+    path: entry.vfsFilePath,
+    sessionId: entry.vfsSessionId,
+  });
+}
+
+/**
  * Ensures document snapshot exists in session VFS with a readable file_id.
  */
 export async function ensureDocumentContext(
@@ -151,7 +169,16 @@ async function ensureDocumentContextInner(
     snapshot,
   );
   const fileName = docFileName(docKey);
-  const vfsPath = `/r7/${fileName}`;
+  const vfsPath = documentUploadVfsPath(fileName, sessionId);
+
+  // Drop stale cache when session changed — never reuse old session file_id.
+  if (sessionStale && existing?.vfsFilePath && existing.vfsSessionId) {
+    await deleteVfsPath(client, {
+      scope: "session",
+      path: existing.vfsFilePath,
+      sessionId: existing.vfsSessionId,
+    });
+  }
 
   let cachedFileId =
     options.forceReupload || storageStale || sessionStale
@@ -168,6 +195,7 @@ async function ensureDocumentContextInner(
     !options.forceReupload &&
     !storageStale &&
     !sessionStale &&
+    existing.vfsSessionId === sessionId &&
     (existing.contentHash === contentHash ||
       normalizeContentHash(existing.contentHash) === contentHash)
   ) {
@@ -194,6 +222,7 @@ async function ensureDocumentContextInner(
         contentHash,
         skippedUpload: true,
         snapshot,
+        sessionId,
       };
     }
     clearDocumentContext(userId, docKey);
@@ -213,13 +242,19 @@ async function ensureDocumentContextInner(
   }
 
   if (!fileId) {
-    const uploaded = await uploadDocumentContext(client, fileName, serialized, {
-      scope: "session",
-      sessionId,
-      sync: true,
-    });
+    const uploaded = await uploadDocumentContextWithRecovery(
+      client,
+      fileName,
+      serialized,
+      {
+        scope: "session",
+        sessionId,
+        sync: true,
+        path: vfsPath,
+      },
+    );
     fileId = uploaded.file_id;
-    filePath = uploaded.file_path;
+    filePath = uploaded.file_path ?? vfsPath;
     if (uploaded.parsing_status !== "complete") {
       const meta = await waitForParsing(client, fileId);
       filePath = meta.file_path ?? filePath;
@@ -229,13 +264,19 @@ async function ensureDocumentContextInner(
       await updateDocumentContext(client, fileId, serialized, vfsPath);
     } catch (err) {
       if (!isVfsNotFoundError(err)) throw err;
-      const uploaded = await uploadDocumentContext(client, fileName, serialized, {
-        scope: "session",
-        sessionId,
-        sync: true,
-      });
+      const uploaded = await uploadDocumentContextWithRecovery(
+        client,
+        fileName,
+        serialized,
+        {
+          scope: "session",
+          sessionId,
+          sync: true,
+          path: vfsPath,
+        },
+      );
       fileId = uploaded.file_id;
-      filePath = uploaded.file_path;
+      filePath = uploaded.file_path ?? vfsPath;
       if (uploaded.parsing_status !== "complete") {
         const meta = await waitForParsing(client, fileId);
         filePath = meta.file_path ?? filePath;
@@ -268,10 +309,11 @@ async function ensureDocumentContextInner(
   return {
     fileId,
     fileName,
-    filePath,
+    filePath: entry.vfsFilePath,
     contentHash,
     skippedUpload: false,
     snapshot,
+    sessionId,
   };
 }
 
