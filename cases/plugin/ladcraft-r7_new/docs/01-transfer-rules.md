@@ -1,10 +1,9 @@
 # Блок 1: Передача данных (R7 → Ladcraft payload)
 
-> **Default (2026-06):** **disk-ref** — без VFS upload; `r7-disk:{id}` + supplement. Навыки читают Р7-Диск через API.  
-> **Opt-in:** `doc-compare` (session VFS snapshot) — только для legacy-агентов в allowlist / title `compare-r7`.
+> **Default (2026-07):** **session VFS snapshot** — upload `r7-snapshot/v1` в `/session/r7/{sessionSeg}/…`; агент читает `body.text`.  
+> **Opt-out:** **disk-ref** — без VFS; `r7-disk:{id}` + supplement. Только через `DISK_REF_AGENT_IDS`, title `r7-compare-docs`, или localStorage override.
 
-> **Статус VFS:** проверено для doc-compare — session VFS, экспорт 2026-06-25.  
-> Схема: [`ladcraft-r7-doc-compare-transfer.md`](../../../knowledge-base/plugins/curated/ladcraft-r7-doc-compare-transfer.md).
+> **Схема snapshot:** [`ladcraft-r7-doc-compare-transfer.md`](../../../knowledge-base/plugins/curated/ladcraft-r7-doc-compare-transfer.md) (формат JSON; не путать с убранным агентом «doc-compare»).
 
 ## Ответственность
 
@@ -28,7 +27,7 @@
 - [ ] Перед send: upload → `parsing_status: complete` → `verifyFileReadable(file_id)` (schema + `body.text` ≥ 100 символов)
 - [ ] **Открытие чата:** `createSession` → `ensureDocumentContext` (`forceReupload`) → только потом `chatReady` и ввод
 - [ ] Каждый `POST …/message` (включая 1-й): `mentioned.files[]` с `file_id`, `file_name` = **`/session/r7/{sessionSeg}/…`**, `mime_type: application/json`
-- [ ] `files.editor` — профиль `editor-mount` (r7-analyze); для doc-compare **не отправлять**
+- [ ] `files.editor` — профиль `editor-mount`; для VFS-профиля **не отправлять**
 - [ ] `content` — текст задания пользователя; **не** вкладывать полный документ в `content`
 - [ ] Допустим supplement выделения в `content` (блок `[Контекст R7: выделенный фрагмент]`)
 - [ ] На **compare-turn**: supplement **пути** — `session_file: /session/r7/{sessionSeg}/…`
@@ -44,7 +43,6 @@
 | старые `r7-word_*` без segment | legacy | Best-effort delete при close / reupload |
 
 Не путать: одинаковые правила в разных чатах — норма; одинаковые `r7-word_*` без segment — баг коллизии (исправлено sessionSeg).
-
 
 ## Отклонено (схема 1)
 
@@ -74,15 +72,15 @@ HTTP body (блок 2 передаёт как есть):
 }
 ```
 
-Первое сообщение (doc-compare): тот же payload с `mentioned.files` — навык не читает B до выбора шаблона.
+Первое сообщение (VFS): тот же payload с `mentioned.files`.
 
-`files.editor` — **не** для doc-compare.
+`files.editor` — **не** для VFS-профиля.
 
-## Навыки (чтение документа B)
+## Навыки (чтение документа)
 
-- Поиск: `resolve_r7_document` / `startup_compare` (`found` только при готовом `body.text`)
-- Чтение: **`read_r7_snapshot_text({ session_file })`** — skill VFS, не bash на `/session/r7/`
-- Эталон A: `head -c 300000 /workspace/Templates/{шаблон}.md`
+- Path: дословно `mentioned.files[0].file_name` (`/session/r7/{sessionSeg}/…`)
+- Чтение: `bash head -c …` по session path или `read_r7_snapshot_text({ session_file })` → **`body.text`**
+- Instruction агента должна опираться на session VFS, не на `r7-disk:` / `R7_DISK_*` (если не disk-ref)
 
 ## Запрещено
 
@@ -95,8 +93,8 @@ HTTP body (блок 2 передаёт как есть):
 
 1. `prepareOutbound` с `sessionId` → один document `file_id`
 2. `download(file_id)` → JSON `r7-snapshot/v1` + непустой `body.text`
-3. Payload: короткий `content`, `mentioned.files` с каноническим `/session/r7/r7-….json`
-4. Навык: `read_r7_snapshot_text` → `ok: true` (bash-smoke на `/session/r7/` **не** gate — известная рассинхронизация mount)
+3. Payload: короткий `content`, `mentioned.files` с каноническим `/session/r7/…`
+4. Агент: READ snapshot → `body.text` (bash-smoke на mount **не** gate)
 
 ## Код
 
@@ -107,22 +105,41 @@ HTTP body (блок 2 передаёт как есть):
 | `src/transfer/snapshot.ts` | `r7-snapshot/v1` |
 | `src/transfer/selection.ts` | `r7-selection/v1` |
 | `src/transfer/message-payload.ts` | `shouldAttachEditor`, `shouldMentionDocumentFiles` |
+| `src/config.ts` | `resolveTransferProfile`, `DEFAULT_TRANSFER_PROFILE` |
 
-## VFS opt-in и агент
+## VFS по умолчанию и требования к агенту
 
-Плагин по умолчанию **не** загружает snapshot в session VFS. Профиль `doc-compare` (VFS) включается точечно — см. `VFS_SNAPSHOT_AGENT_IDS` и `ladcraft_r7_transfer_profile:{agentId}` в [`config.ts`](../src/config.ts).
+Плагин **по умолчанию** загружает snapshot в session VFS (`DEFAULT_TRANSFER_PROFILE` = внутреннее значение `"doc-compare"`). Выбор профиля: [`config.ts`](../src/config.ts) → `resolveTransferProfile`.
 
-**Переключить плагин на VFS — только половина настройки.** Агенту на Ladcraft нужно **встроить (привязать и установить) навыки, которые читают VFS**, иначе snapshot бесполезен:
+**Включить VFS в плагине — половина настройки.** Агенту нужно читать session VFS, иначе snapshot бесполезен:
 
-| Что даёт плагин (doc-compare) | Что должен уметь агент |
-|-------------------------------|-------------------------|
-| Upload `r7-snapshot/v1` в session VFS | Навык с `read_r7_snapshot_text` / bash по `/session/r7/…` |
-| `mentioned.files` с путём к JSON | Instruction: START/COMPARE через VFS, не disk API |
-| Кнопка «Синхр. документ» | `r7-compare-toolkit`, `doc-compare` и т.п. |
+| Что даёт плагин (VFS) | Что должен уметь агент |
+|-----------------------|-------------------------|
+| Upload `r7-snapshot/v1` в session VFS | READ path из `mentioned.files` → `body.text` |
+| `mentioned.files` с путём к JSON | Instruction: источник истины — session, не disk API |
+| Кнопка «Синхр. документ» | Навыки/bash под `/session/r7/…` |
 
-Примеры VFS-агентов: compare-r7, «Сравнение 27». Примеры **без VFS**: `r7-compare-docs`, агенты из [`examples_sergey`](../../../examples_sergey/) — только disk-навыки (`r7-compare-disk`, `r7-disk-api`, `analytics_csv`) и `R7_DISK_*` в install env.
+Примеры VFS: LCA (`f5BwCaKDeDDG71zHJPvid`), новые агенты под этот плагин.  
+Примеры **disk-ref (opt-out):** id в `DISK_REF_AGENT_IDS` — `r7-compare-docs`, analytics_csv, ГОСТ34 и т.п.
 
 **Не смешивать:** агент с disk-instruction + VFS в плагине (или наоборот) — типичный источник сбоев.
+
+### disk-ref как опция
+
+| Способ | Как |
+|--------|-----|
+| Allowlist | Добавить `agent_id` в `DISK_REF_AGENT_IDS` в `config.ts`, пересобрать плагин |
+| Title | Title агента содержит `r7-compare-docs` |
+| localStorage (без пересборки) | см. ниже |
+
+```javascript
+// отключить VFS для конкретного агента
+localStorage.setItem("ladcraft_r7_transfer_profile:<agentId>", "disk-ref");
+
+// явно включить VFS (алиас "vfs" → тот же профиль, что "doc-compare")
+localStorage.setItem("ladcraft_r7_transfer_profile:<agentId>", "vfs");
+location.reload();
+```
 
 ## См. также
 
@@ -130,9 +147,9 @@ HTTP body (блок 2 передаёт как есть):
 - [../../../knowledge-base/plugins/curated/ladcraft-r7-plugin-input-requirements.md](../../../knowledge-base/plugins/curated/ladcraft-r7-plugin-input-requirements.md)
 - [../../../r7-compare-docs/docs/r7-disk-ref-contract.md](../../../r7-compare-docs/docs/r7-disk-ref-contract.md) — disk-ref supplement и авто-поиск `templates`
 
-## Профиль disk-ref (r7-compare-docs)
+## Профиль disk-ref (opt-out)
 
-- **Без** VFS upload документа B
+- **Без** VFS upload документа
 - `mentioned.files[0].file_id` = `r7-disk:{document_id}`
 - Supplement в `content`:
 
@@ -142,8 +159,8 @@ document_id: 12345
 file_name: договор.docx
 ```
 
-- Пользователь должен иметь папку **`templates`** в «Мои документы» (латиница, регистр не важен)
-- Код: `src/transfer/disk-ref.ts`, профиль выбирается в `resolveTransferProfile` (`src/config.ts`)
+- Пользователь должен иметь папку **`templates`** в «Мои документы» (латиница, регистр не важен), если сценарий сравнения по диску
+- Код: `src/transfer/disk-ref.ts`, профиль — `resolveTransferProfile` (`src/config.ts`)
 
 ### Приоритет `document_id` (disk-ref)
 

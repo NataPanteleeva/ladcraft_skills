@@ -126,8 +126,8 @@ const wholeWindow = "Читаю контекст.\n\nКакой-то длинн�
 const refuse = resolveDocumentApplyPlan("вставь", [
   { id: "a", role: "assistant", text: wholeWindow, createdAt: 1 },
 ]);
-if (refuse) {
-  console.error("FAIL must refuse whole window", refuse);
+if (!refuse || refuse.source !== "missing-proposal" || refuse.tasks.length) {
+  console.error("FAIL must refuse whole window as missing-proposal", refuse);
   process.exit(1);
 }
 

@@ -27,14 +27,14 @@ export interface EditorAttachState {
   lastEditorAttachFileId: string | null;
 }
 
-/** Transfer policy: doc-compare uses VFS + bash; disk-ref uses r7-disk id without VFS upload. */
+/** Transfer policy: "doc-compare" = session VFS snapshot (default); disk-ref = r7-disk id; editor-mount = files.editor. */
 export type TransferProfile = "doc-compare" | "disk-ref" | "editor-mount";
 
 export interface PrepareOutboundOptions {
   sessionId?: string;
   forceReupload?: boolean;
   docKey?: string;
-  /** Default doc-compare: no files.editor, deferred mentioned.files on first send. */
+  /** Default VFS (doc-compare): no files.editor; mentioned.files from first send. */
   transferProfile?: TransferProfile;
   /** @deprecated disk-ref auto-finds templates folder; no longer used. */
   templatesDirectoryId?: number;

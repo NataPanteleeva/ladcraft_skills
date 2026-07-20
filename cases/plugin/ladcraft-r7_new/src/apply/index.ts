@@ -1,25 +1,5 @@
-export type {
-  ActionBlock,
-  ActionContentSource,
-  ActionHandlers,
-  DownloadBlock,
-  InsertBlock,
-  InsertPosition,
-  MessageActionPlan,
-} from "./types";
-export {
-  DOWNLOAD_BLOCK_LABEL,
-  INSERT_BLOCK_LABEL,
-} from "./types";
+export type { InsertPosition } from "./types";
 
-export { resolveMessageActions, type ResolveActionsOptions } from "./resolve-actions";
-export {
-  findUserActionIntentAfter,
-  parseUserActionIntent,
-  type UserActionIntent,
-} from "./user-action-intent";
-export { insertContent } from "./insert";
-export { downloadMarkdown, downloadAsWordHtml, downloadDocx, isDocxDownloadSource, suggestBaseName } from "./download";
 export { withAction } from "./editor-methods";
 export {
   applyEditorTasks,
@@ -32,6 +12,7 @@ export {
 } from "./task-runner";
 export {
   isDocumentApplyApproval,
+  isReplaceSelectionUserIntent,
   parseInsertPosition,
   parseFixIntent,
   resolveDocumentApplyPlan,
@@ -40,10 +21,31 @@ export {
   intentApplyKey,
   planDedupeHit,
   extractDraftBody,
+  extractInsertableMarkdown,
+  assistantApplySource,
+  isApplyableAssistantBlob,
+  isStructuredSummaryBlob,
+  isGenericInsertableDraft,
+  MISSING_PROPOSAL_STATUS,
+  MISSING_PROPOSAL_AGENT_NOTE,
   type DocumentApplyIntent,
   type DocumentApplyPlan,
   type FixIntent,
 } from "./intent-apply";
+export {
+  resolveActionTarget,
+  resolveActionButtons,
+  planFromActionId,
+  resolveInsertableText,
+  type ActionId,
+  type ActionButtonSpec,
+  type ActionTarget,
+} from "./action-buttons";
+export {
+  downloadTextAsMarkdown,
+  downloadTextAsWordHtml,
+  triggerBrowserDownload,
+} from "./local-download";
 export {
   parseR7Proposal,
   stripR7ProposalMarkup,
@@ -58,5 +60,9 @@ export {
   feedbackNotifyKey,
   type R7ApplyEventV1,
 } from "./apply-feedback";
-export type { DeliverableCard } from "./deliverable";
-export { compareReportToMarkdown, type CompareReport } from "./compare-report";
+export {
+  sanitizeAssistantChatText,
+  stripActionsMarkup,
+  stripActionHintLines,
+  appendToolWebHints,
+} from "./display-sanitize";

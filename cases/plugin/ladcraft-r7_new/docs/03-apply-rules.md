@@ -1,37 +1,34 @@
 # Блок 3: Обработка ответа и вставка в R7
 
-> **ladcraft-r7_new / LCA:** WHAT/WHERE из **`r7.proposal/v1`** + user intent; markdown `Черновик` — fallback. После apply — quiet ```r7.event```.
+> **ladcraft-r7_new / LCA:** WHAT/WHERE из **`r7.proposal/v1`**. Apply **без** хода к агенту. Markdown `Черновик:` — узкий legacy-fallback; free-text / summary heuristics **нет**.
 
 ## Ответственность
 
-- Intent-apply: «вставь» / «да» / «исправь все|N» / позиция → Asc из proposal
-- Резолвер задач из `tool_calls` (fallback) и `r7.task`
-- Авто-применение editor tasks + feedback `r7.event`
+- Intent-apply: «вставь» / «да» / «замени…» / «исправь все|N» → Asc из **proposal.text**
+- Proposal хранится в `ChatMessage.applyText` (UI `text` санитизирован и fence не показывает)
+- Нет proposal: контролируемый **markdown-fallback** (Черновик / structured summary / «вставь текст»|позиция курсора → last reply) → `paste_text` + MD→HTML
+- Нет proposal и текст не insertable («Читаю контекст…») → статус + **отправка агенту** с пометкой «повтори с r7.proposal»
+- Успешный apply / нет выделения → **blocked/applied**, агенту не слать
+- После успешного apply: статус в UI, **не** `sendUserMessage`, **не** `r7.event`, **не** wait агента
+- Резолвер задач из `tool_calls` (fallback, когда агент всё же вызвал write-tools)
 
 ## Precedence inbound
 
-0. **User intent** на send (`tryIntentApplyFromUserText`) — proposal → tasks (blob / findings / cell / comment)
-1. `parseToolCalls(message.tool_calls)` — имена `r7_paste`, `r7_search_replace`, …
-2. Fenced / inline `r7.task` — без коллизии fingerprint
-
-Дедуп: `content:{type}:{JSON(data)}` + `intent:findings:rN:ids` в `appliedKeys`.
+0. **User intent** на send (`tryIntentApplyFromUserText`) — proposal → Asc → early return
+1. Иначе: VFS sync + agent turn
+2. После ответа агента: `parseToolCalls` / `r7.task` auto-apply (dedupe)
 
 ## Guards
 
-- Нет proposal и нет **Черновик** → не вставлять «всё окно»
-- `replace_selection` / comment без выделения → статус «выделите фрагмент…», без paste
+- Bare «вставь» без Черновик/summary/proposal → `missing-proposal` (не вставлять «всё окно» / «читаю контекст»)
+- «вставь текст» / «в позицию курсора» / «вставь это» → markdown-fallback last insertable reply
+- «замени выделенный / абзац / на предложенный текст» → `replace_selection` (из proposal или fallback)
+- `replace_selection` без выделения → статус «выделите фрагмент…»
 - Короткое «да» после findings → не apply (нужно «исправь…»)
 
-## Авто-применение (task-runner)
+## UI
 
-| `type` | Авто-применение |
-|--------|-----------------|
-| `search_replace`, `add_comment`, `paste`, `paste_text`, `cell_paste`, `remove_selection`, `replace_selection` | **да** |
-| `deliver_*`, `share_link`, `open_file` | **нет** |
-
-## Feedback `r7.event`
-
-После apply: quiet fence `r7.event/v1` `apply_result`. Агент не re-apply.
+V4 action bar над composer: шильдик «Действия» + всплывающая икон-полоска (локальный Asc/download, без агента). Повторный клик по вставке **не** блокируется dedupe («Уже применено») — только intent-apply и auto tool apply. Верх — компактные иконки + статус с hover.
 
 ## Код
 
@@ -40,8 +37,7 @@
 | `src/apply/proposal-parse.ts` | r7.proposal/v1 |
 | `src/apply/intent-apply.ts` | user phrase → plan |
 | `src/apply/task-runner.ts` | Asc apply |
-| `src/apply/display-sanitize.ts` | strip proposal/event/task |
-| `src/main.ts` | tryIntentApplyFromUserText |
+| `src/main.ts` | tryIntentApplyFromUserText + early return |
 
 ## См. также
 

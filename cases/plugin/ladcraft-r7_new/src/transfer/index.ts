@@ -2,7 +2,7 @@
 
 
 
-import { buildDocKey, type EditorType } from "../config";
+import { buildDocKey, DEFAULT_TRANSFER_PROFILE, type EditorType } from "../config";
 
 import type { EaiClient } from "../eai/client";
 
@@ -53,27 +53,16 @@ export { ensureDocumentContext } from "./context-sync";
 
 
 /**
-
- * Block 1 entry point: build outbound message payload (disk-ref default; VFS opt-in).
-
+ * Block 1 entry point: outbound payload (VFS snapshot default; disk-ref opt-out).
  */
-
 export async function prepareOutbound(
-
   client: EaiClient,
-
   editorType: EditorType,
-
   userText: string,
-
   attachState: EditorAttachState,
-
   options: PrepareOutboundOptions = {},
-
 ): Promise<{ outbound: OutboundTransfer; context: EnsureContextResult }> {
-
-  const profile = options.transferProfile ?? "doc-compare";
-
+  const profile = options.transferProfile ?? DEFAULT_TRANSFER_PROFILE;
   if (profile === "disk-ref") {
     const outbound = await prepareDiskRefOutbound(editorType, userText, attachState, {
       ...options,

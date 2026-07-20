@@ -16,7 +16,16 @@ const STORAGE_KEY = "ladcraft_r7_plugin_config";
 const AGENT_DISK_STORAGE_KEY = "ladcraft_r7_agent_disk_config";
 const TRANSFER_PROFILE_KEY_PREFIX = "ladcraft_r7_transfer_profile:";
 
-/** Agents that use r7-disk:{id} without VFS upload (disk-ref profile). */
+/**
+ * Default for any agent unless disk-ref is set explicitly (allowlist / title / override).
+ * Internal enum value remains "doc-compare" (= session VFS snapshot upload).
+ */
+export const DEFAULT_TRANSFER_PROFILE: TransferProfile = "doc-compare";
+
+/**
+ * Opt-out: agents that use r7-disk:{id} without VFS upload.
+ * All other agents get session VFS (DEFAULT_TRANSFER_PROFILE).
+ */
 const DISK_REF_AGENT_IDS = new Set<string>([
   "8UrXveY9LqY8gSmHl2OpM", // r7-compare-docs
   "H3ELtOY2uyYcFQwCAgMst", // R7 ГОСТ34 (плагин), клон на prod
@@ -26,9 +35,13 @@ const DISK_REF_AGENT_IDS = new Set<string>([
   "n9ZP1dtuY1p_3PvlNqjCC", // P7-compare (r7-compare-docs-restored)
 ]);
 
-/** Agents that explicitly need session VFS snapshot upload (legacy compare).
- *  Requires VFS-capable skills bound to the agent — see docs/01-transfer-rules.md § VFS opt-in. */
+/**
+ * Known prod agents that use session VFS (documentation / explicit list).
+ * Default is already VFS — list does not change resolveTransferProfile fallback.
+ * Agent must bind VFS-capable skills — see docs/01-transfer-rules.md.
+ */
 const VFS_SNAPSHOT_AGENT_IDS = new Set<string>([
+  "f5BwCaKDeDDG71zHJPvid", // LCA — лингвистическая проверка (ladcraft-r7_new)
   "s_eDSWr8EkRPfDsbgBJxa", // legacy «Сравнение 27»
   "ju4MekTiV4psav71nudMI", // «Сравнение 27» (пересоздан 2026-07-02)
   "3pESmwY2EK_EYFwj7TYDS", // R7 doc handler (плагин)
@@ -73,14 +86,16 @@ export function saveAgentDiskConfig(agentId: string, config: AgentDiskConfig): v
   localStorage.setItem(AGENT_DISK_STORAGE_KEY, JSON.stringify(map));
 }
 
-/** Per-agent transfer profile override in localStorage (doc-compare | disk-ref). */
+/**
+ * Per-agent override in localStorage.
+ * Values: doc-compare | vfs (alias → VFS) | disk-ref | editor-mount.
+ */
 export function getAgentTransferProfileOverride(agentId: string): TransferProfile | null {
   if (!agentId) return null;
   try {
     const raw = localStorage.getItem(TRANSFER_PROFILE_KEY_PREFIX + agentId);
-    if (raw === "doc-compare" || raw === "disk-ref" || raw === "editor-mount") {
-      return raw;
-    }
+    if (raw === "vfs" || raw === "doc-compare") return "doc-compare";
+    if (raw === "disk-ref" || raw === "editor-mount") return raw;
   } catch {
     /* ignore */
   }
@@ -104,7 +119,10 @@ export function usesDiskRef(profile: TransferProfile): boolean {
   return profile === "disk-ref";
 }
 
-/** disk-ref only for r7-compare-docs; default doc-compare (VFS) for R7 compare agents. */
+/**
+ * Resolve transfer profile for the selected agent.
+ * Default = session VFS snapshot. disk-ref only via allowlist, title, or localStorage.
+ */
 export function resolveTransferProfile(agentId: string, agentTitle?: string): TransferProfile {
   const override = getAgentTransferProfileOverride(agentId);
   if (override) return override;
@@ -119,7 +137,7 @@ export function resolveTransferProfile(agentId: string, agentTitle?: string): Tr
   }
 
   if (agentId && VFS_SNAPSHOT_AGENT_IDS.has(agentId)) {
-    return "doc-compare";
+    return DEFAULT_TRANSFER_PROFILE;
   }
 
   const id = (agentId ?? "").toLowerCase();
@@ -128,10 +146,10 @@ export function resolveTransferProfile(agentId: string, agentTitle?: string): Tr
     title.includes("compare-r7") ||
     id.includes("compare-r7")
   ) {
-    return "doc-compare";
+    return DEFAULT_TRANSFER_PROFILE;
   }
 
-  return "doc-compare";
+  return DEFAULT_TRANSFER_PROFILE;
 }
 
 /** disk-ref agents carry r7-disk:{document_id} in mentioned.files. */

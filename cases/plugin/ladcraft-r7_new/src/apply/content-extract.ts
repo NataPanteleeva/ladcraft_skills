@@ -124,8 +124,12 @@ export function findMarkdownTableStart(text: string): number {
  * Strips r7.task/tool JSON (including partial fences). Tables stay visible so
  * the final history sync only appends chrome (questions/actions), not a full rewrite.
  */
+export function getStreamingApplyText(text: string): string {
+  return stripStreamingLeaks(text).trim();
+}
+
 export function getStreamingVisibleText(text: string): string {
-  let visible = stripStreamingLeaks(text);
+  let visible = getStreamingApplyText(text);
   visible = sanitizeAssistantChatText(visible);
   return visible.trim() || STREAMING_WORKING_PLACEHOLDER;
 }

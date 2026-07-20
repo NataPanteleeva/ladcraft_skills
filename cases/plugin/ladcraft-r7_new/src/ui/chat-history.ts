@@ -3,7 +3,7 @@ import type { HistoryMessage } from "../eai/session";
 import {
   extractText,
   extractVisibleText,
-  hasCompletedToolCall,
+  extractApplySourceText,
   isAssistantInProgress,
   isAssistantTurnStalled,
 } from "../eai/session";
@@ -11,7 +11,6 @@ import {
 const STALLED_ASSISTANT_TEXT =
   "Агент не завершил ответ. Отправьте сообщение ещё раз или откройте чат заново.";
 import {
-  buildCompareActionsFallbackWidget,
   extractWidgetPayload,
   findPendingWidgetIndex,
   isWidgetMessage,
@@ -19,20 +18,14 @@ import {
 import {
   appendToolWebHints,
   sanitizeAssistantChatText,
-  stripActionHintLines,
 } from "../apply/display-sanitize";
-import { extractSuggestedActions } from "../apply/suggested-actions";
 import { stripUserMessageSupplements, isServiceFeedbackContent } from "../utils/message-text";
-import { resolveMessageActions } from "../apply/resolve-actions";
-import { resolveActionBinding, findBindingForUserAnchor } from "../apply/user-action-intent";
-import { isComparisonReport, isTemplatePickerMessage } from "../apply/content-extract";
+import { isComparisonReport } from "../apply/content-extract";
 import { extractWidgetChoices } from "./widget-choices";
 import type { ChatMessage } from "./chat";
 
 export interface HistoryToChatOptions {
   editorType?: EditorType;
-  /** When false, skip layer 1/2 action buttons (ladcraft-r7 base variant). */
-  actionButtons?: boolean;
 }
 
 /** Map Ladcraft session history to chat messages for the plugin UI. */
@@ -42,8 +35,7 @@ export function historyToChatMessages(
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const pendingWidgetIndex = findPendingWidgetIndex(items);
-  const editorType = options.editorType ?? "word";
-  const actionButtons = options.actionButtons !== false;
+  void options;
 
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
@@ -57,7 +49,6 @@ export function historyToChatMessages(
           ...widgetPayload,
           interactive: index === pendingWidgetIndex,
         };
-        previous.suggestedActions = undefined;
         continue;
       }
 
@@ -77,16 +68,11 @@ export function historyToChatMessages(
       item.role === "assistant"
         ? appendToolWebHints(item, extractVisibleText(item))
         : extractVisibleText(item);
+    const applySource =
+      item.role === "assistant" ? extractApplySourceText(item).trim() : "";
 
     if (item.role === "assistant") {
-      const compareActionsWidgetFallback =
-        !widgetPayload &&
-        isComparisonReport(rawVisible.trim()) &&
-        hasCompletedToolCall(item, "r7_show_compare_actions_widget")
-          ? buildCompareActionsFallbackWidget()
-          : null;
-      const resolvedWidgetPayload = widgetPayload ?? compareActionsWidgetFallback;
-      const hasWidget = Boolean(resolvedWidgetPayload) || isWidgetMessage(item);
+      const hasWidget = Boolean(widgetPayload) || isWidgetMessage(item);
       const isPendingWidget = index === pendingWidgetIndex;
       const widgetChoices =
         isPendingWidget && !widgetPayload
@@ -96,24 +82,7 @@ export function historyToChatMessages(
       const waitingForInput =
         isPendingWidget && !hasWidget && !widgetChoices?.length && !comparisonReport;
 
-      const suppressSuggestedActions =
-        !actionButtons ||
-        Boolean(resolvedWidgetPayload) ||
-        Boolean(widgetChoices?.length) ||
-        waitingForInput;
-
-      const suggestedActions = actionButtons
-        ? extractSuggestedActions(item, items, index, {
-            rawText: rawVisible,
-            widgetHtml: resolvedWidgetPayload?.html,
-            suppress: suppressSuggestedActions,
-          })
-        : [];
-
       let text = sanitizeAssistantChatText(rawVisible).trim();
-      if (suggestedActions.length) {
-        text = stripActionHintLines(text);
-      }
       if (!text) {
         if (isAssistantInProgress(item)) {
           text = "Агент выполняет запрос…";
@@ -122,43 +91,17 @@ export function historyToChatMessages(
         }
       }
 
-      const blocked =
-        hasWidget ||
-        Boolean(widgetChoices?.length) ||
-        waitingForInput ||
-        isTemplatePickerMessage(text);
-
-      const binding = actionButtons ? resolveActionBinding(items, index) : null;
-
-      const actionPlan = actionButtons
-        ? resolveMessageActions(item, {
-            editorType,
-            items,
-            messageIndex: index,
-            blocked,
-            userIntent: binding?.userIntent,
-            payloadSourceIndex: binding?.payloadSourceIndex,
-            actionAnchorIndex: binding?.actionAnchorIndex,
-          })
-        : { blocks: [] };
-
-      const hideActionsOnReport =
-        binding &&
-        binding.actionAnchorIndex !== index &&
-        binding.payloadSourceIndex === index;
-
       messages.push({
         id: item.id,
         role: "assistant",
         text,
-        widget: resolvedWidgetPayload
-          ? { ...resolvedWidgetPayload, interactive: isPendingWidget }
+        // Full raw (content+timeline), prefers chunks that still contain r7.proposal.
+        applyText: applySource || undefined,
+        widget: widgetPayload
+          ? { ...widgetPayload, interactive: isPendingWidget }
           : undefined,
         widgetChoices: widgetChoices?.length ? widgetChoices : undefined,
         waitingForInput,
-        actionPlan:
-          !hideActionsOnReport && actionPlan.blocks.length ? actionPlan : undefined,
-        suggestedActions: suggestedActions.length ? suggestedActions : undefined,
       });
       continue;
     }
@@ -170,36 +113,14 @@ export function historyToChatMessages(
       continue;
     }
 
-    const userBinding = actionButtons ? findBindingForUserAnchor(items, index) : null;
-    let userActionPlan;
-    if (userBinding) {
-      const sourceMessage = items[userBinding.payloadSourceIndex];
-      if (sourceMessage?.role === "assistant") {
-        userActionPlan = resolveMessageActions(sourceMessage, {
-          editorType,
-          items,
-          messageIndex: index,
-          userIntent: userBinding.userIntent,
-          payloadSourceIndex: userBinding.payloadSourceIndex,
-          actionAnchorIndex: userBinding.actionAnchorIndex,
-        });
-      }
-    }
-
     messages.push({
       id: item.id,
       role: "user",
       text: stripUserMessageSupplements((extractText(item) || visibleText).trim()),
-      actionPlan: userActionPlan?.blocks.length ? userActionPlan : undefined,
     });
   }
 
   return messages.filter(
-    (m) =>
-      m.text.trim() ||
-      m.widget ||
-      m.widgetChoices?.length ||
-      m.suggestedActions?.length ||
-      m.actionPlan?.blocks.length,
+    (m) => m.text.trim() || m.widget || m.widgetChoices?.length,
   );
 }
