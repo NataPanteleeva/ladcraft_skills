@@ -1,6 +1,6 @@
 {
   "name": "ladcraft-r7-new",
-  "version": "0.6.18-шильдики",
+  "version": "0.6.20-action-repeat",
   "private": true,
   "scripts": {
     "build": "npm run build:btn-stream",

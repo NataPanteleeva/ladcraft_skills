@@ -190,8 +190,7 @@ function mountChatView(
   const chromeWrap = el("div", "chrome-wrap");
   chromeWrap.setAttribute("data-chat-chrome-wrap", "1");
 
-  const badgeRow = el("div", "chrome-badge-row");
-
+  const menuSlot = el("div", "chrome-slot chrome-slot-menu");
   const chromeTail = document.createElement("button");
   chromeTail.type = "button";
   chromeTail.className = "chrome-tail chrome-tail-menu";
@@ -204,22 +203,7 @@ function mountChatView(
     if (chromePanelOpen) statusPanelOpen = false;
     syncChromePanelsOpen(panel, lastChatState);
   };
-  badgeRow.appendChild(chromeTail);
-
-  const statusTail = document.createElement("button");
-  statusTail.type = "button";
-  statusTail.className = "chrome-tail chrome-tail-status";
-  statusTail.setAttribute("data-status-tail", "1");
-  statusTail.title = "Статус";
-  statusTail.innerHTML = '<span class="action-tail-dot"></span>Статус ▾';
-  statusTail.onclick = (e) => {
-    e.preventDefault();
-    statusPanelOpen = !statusPanelOpen;
-    if (statusPanelOpen) chromePanelOpen = false;
-    syncChromePanelsOpen(panel, lastChatState);
-  };
-  badgeRow.appendChild(statusTail);
-  chromeWrap.appendChild(badgeRow);
+  menuSlot.appendChild(chromeTail);
 
   const chromePanel = el("div", "chrome-slide-panel chrome-menu-panel");
   chromePanel.setAttribute("data-chrome-panel", "1");
@@ -270,7 +254,23 @@ function mountChatView(
   }
 
   chromePanel.appendChild(chrome);
-  chromeWrap.appendChild(chromePanel);
+  menuSlot.appendChild(chromePanel);
+  chromeWrap.appendChild(menuSlot);
+
+  const statusSlot = el("div", "chrome-slot chrome-slot-status");
+  const statusTail = document.createElement("button");
+  statusTail.type = "button";
+  statusTail.className = "chrome-tail chrome-tail-status";
+  statusTail.setAttribute("data-status-tail", "1");
+  statusTail.title = "Статус";
+  statusTail.innerHTML = '<span class="action-tail-dot"></span>Статус ▾';
+  statusTail.onclick = (e) => {
+    e.preventDefault();
+    statusPanelOpen = !statusPanelOpen;
+    if (statusPanelOpen) chromePanelOpen = false;
+    syncChromePanelsOpen(panel, lastChatState);
+  };
+  statusSlot.appendChild(statusTail);
 
   const statusPanel = el("div", "chrome-slide-panel chrome-status-panel");
   statusPanel.setAttribute("data-status-panel", "1");
@@ -283,7 +283,8 @@ function mountChatView(
   info.appendChild(line);
   info.appendChild(detail);
   statusPanel.appendChild(info);
-  chromeWrap.appendChild(statusPanel);
+  statusSlot.appendChild(statusPanel);
+  chromeWrap.appendChild(statusSlot);
   panel.appendChild(chromeWrap);
 
   const debugBar = el("div", "disk-debug-bar");

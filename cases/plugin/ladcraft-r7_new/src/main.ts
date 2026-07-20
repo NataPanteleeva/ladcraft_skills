@@ -633,23 +633,29 @@ class LadcraftR7App {
       return;
     }
 
-    await this.executeDocumentApplyPlan(plan);
+    await this.executeDocumentApplyPlan(plan, { allowRepeat: true });
   }
 
   private async executeDocumentApplyPlan(
     plan: import("./apply/intent-apply").DocumentApplyPlan,
+    options?: { allowRepeat?: boolean },
   ): Promise<"applied" | "blocked" | "noop"> {
-    const appliedKeys = this.loadAppliedEditorTaskKeys();
-    if (planDedupeHit(plan, appliedKeys)) {
+    const allowRepeat = options?.allowRepeat === true;
+    const appliedKeys = allowRepeat ? new Set<string>() : this.loadAppliedEditorTaskKeys();
+    if (!allowRepeat && planDedupeHit(plan, appliedKeys)) {
       this.chatStatus = "Уже применено";
       this.renderChatShell(this.chatStatus, true);
       return "applied";
     }
 
-    const pendingTasks = plan.tasks.filter((task) => !appliedKeys.has(taskContentKey(task)));
+    const pendingTasks = allowRepeat
+      ? plan.tasks
+      : plan.tasks.filter((task) => !appliedKeys.has(taskContentKey(task)));
     if (!pendingTasks.length) {
-      for (const k of plan.dedupeKeys) appliedKeys.add(k);
-      this.persistAppliedEditorTaskKeys(appliedKeys);
+      if (!allowRepeat) {
+        for (const k of plan.dedupeKeys) appliedKeys.add(k);
+        this.persistAppliedEditorTaskKeys(appliedKeys);
+      }
       this.chatStatus = "Уже применено";
       this.renderChatShell(this.chatStatus, true);
       return "applied";
@@ -673,11 +679,13 @@ class LadcraftR7App {
       if (!result.successfulTasks.length && !result.failed) return "noop";
 
       if (result.successfulTasks.length) {
-        for (const task of result.successfulTasks) {
-          appliedKeys.add(taskContentKey(task));
+        if (!allowRepeat) {
+          for (const task of result.successfulTasks) {
+            appliedKeys.add(taskContentKey(task));
+          }
+          for (const k of plan.dedupeKeys) appliedKeys.add(k);
+          this.persistAppliedEditorTaskKeys(appliedKeys);
         }
-        for (const k of plan.dedupeKeys) appliedKeys.add(k);
-        this.persistAppliedEditorTaskKeys(appliedKeys);
         this.needsEditorRemount = true;
       }
 

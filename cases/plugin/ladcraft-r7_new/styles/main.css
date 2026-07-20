@@ -491,25 +491,36 @@ button:disabled {
   display: none !important;
 }
 
-/* Top: Меню (left) + Статус (right); panels match badge widths */
+/* Top: Меню (left) + Статус (right); panels overlay chat (absolute) */
 .chrome-wrap {
   position: relative;
+  z-index: 40;
   flex-shrink: 0;
   margin-bottom: 2px;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   column-gap: 6px;
-  row-gap: 0;
   align-items: start;
   padding: 2px 2px 0;
 }
 
-/* Children participate in chrome-wrap grid */
-.chrome-badge-row {
-  display: contents;
+.chrome-slot {
+  position: relative;
+  min-width: 0;
+}
+
+.chrome-slot-menu {
+  justify-self: stretch;
+}
+
+.chrome-slot-status {
+  justify-self: stretch;
+  width: 100%;
 }
 
 .chrome-tail {
+  display: block;
+  width: 100%;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -524,22 +535,15 @@ button:disabled {
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(124, 58, 237, 0.18);
   line-height: 1.3;
+  box-sizing: border-box;
 }
 
 .chrome-tail-menu {
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: stretch;
   min-width: 64px;
   border-radius: 10px 4px 10px 10px;
 }
 
 .chrome-tail-status {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: stretch;
-  width: 100%;
-  max-width: none;
   text-align: left;
   border-radius: 10px 10px 4px 10px;
 }
@@ -554,7 +558,13 @@ button:disabled {
   box-shadow: 0 0 0 2px var(--primary-soft), 0 2px 8px rgba(124, 58, 237, 0.25);
 }
 
+/* Float over chat — do not push messages down */
 .chrome-slide-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
@@ -564,6 +574,7 @@ button:disabled {
     opacity 0.2s ease,
     transform 0.2s ease;
   pointer-events: none;
+  box-sizing: border-box;
 }
 
 .chrome-slide-panel > * {
@@ -576,26 +587,6 @@ button:disabled {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
-  margin-top: 4px; /* same badge→panel distance for status and menu */
-}
-
-/* width:0 + min-width:100% — panel follows badge column, does not expand it */
-.chrome-menu-panel {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: stretch;
-  width: 0;
-  min-width: 100%;
-  box-sizing: border-box;
-}
-
-.chrome-status-panel {
-  grid-column: 2;
-  grid-row: 2;
-  justify-self: stretch;
-  width: 0;
-  min-width: 100%;
-  box-sizing: border-box;
 }
 
 .chrome-status-panel .chrome-info {
@@ -606,6 +597,7 @@ button:disabled {
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 
 /* Menu buttons fill badge width; minimal inset to frame */
@@ -624,6 +616,7 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--primary-border);
   border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 
 .chrome-menu-panel .chrome-ico {

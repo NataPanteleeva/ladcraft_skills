@@ -22,7 +22,7 @@ npm install
 npm run build
 ```
 
-Версия UI: `0.6.18-шильдики` (`config.json` / `src/version.ts`).
+Версия UI: `0.6.20-action-repeat` (`config.json` / `src/version.ts`).
 
 ## Передача документа
 
