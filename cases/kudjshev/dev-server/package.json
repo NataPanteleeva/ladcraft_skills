@@ -1,0 +1,35 @@
+{
+  "name": "gptzator-skill-dev-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "tsx watch src/server.ts",
+    "dev:web": "npm --prefix web-ui run dev",
+    "typecheck": "tsc --noEmit",
+    "build": "npm --prefix web-ui run build",
+    "verify": "npm run typecheck && npm run build && tsx scripts/verify-builder.ts",
+    "audit:builder": "tsx scripts/audit-builder.ts",
+    "start": "NODE_ENV=production tsx src/server.ts",
+    "postinstall": "npm install --prefix web-ui"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "gray-matter": "^4.0.3",
+    "handlebars": "^4.7.8",
+    "js-yaml": "^4.1.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.23",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.19.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

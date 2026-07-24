@@ -31,6 +31,8 @@ import type { ChatMessage } from "./chat";
 
 export interface HistoryToChatOptions {
   editorType?: EditorType;
+  /** When false, skip layer 1/2 action buttons (ladcraft-r7 base variant). */
+  actionButtons?: boolean;
 }
 
 /** Map Ladcraft session history to chat messages for the plugin UI. */
@@ -41,6 +43,7 @@ export function historyToChatMessages(
   const messages: ChatMessage[] = [];
   const pendingWidgetIndex = findPendingWidgetIndex(items);
   const editorType = options.editorType ?? "word";
+  const actionButtons = options.actionButtons !== false;
 
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
@@ -94,13 +97,18 @@ export function historyToChatMessages(
         isPendingWidget && !hasWidget && !widgetChoices?.length && !comparisonReport;
 
       const suppressSuggestedActions =
-        Boolean(resolvedWidgetPayload) || Boolean(widgetChoices?.length) || waitingForInput;
+        !actionButtons ||
+        Boolean(resolvedWidgetPayload) ||
+        Boolean(widgetChoices?.length) ||
+        waitingForInput;
 
-      const suggestedActions = extractSuggestedActions(item, items, index, {
-        rawText: rawVisible,
-        widgetHtml: resolvedWidgetPayload?.html,
-        suppress: suppressSuggestedActions,
-      });
+      const suggestedActions = actionButtons
+        ? extractSuggestedActions(item, items, index, {
+            rawText: rawVisible,
+            widgetHtml: resolvedWidgetPayload?.html,
+            suppress: suppressSuggestedActions,
+          })
+        : [];
 
       let text = sanitizeAssistantChatText(rawVisible).trim();
       if (suggestedActions.length) {
@@ -120,17 +128,19 @@ export function historyToChatMessages(
         waitingForInput ||
         isTemplatePickerMessage(text);
 
-      const binding = resolveActionBinding(items, index);
+      const binding = actionButtons ? resolveActionBinding(items, index) : null;
 
-      const actionPlan = resolveMessageActions(item, {
-        editorType,
-        items,
-        messageIndex: index,
-        blocked,
-        userIntent: binding?.userIntent,
-        payloadSourceIndex: binding?.payloadSourceIndex,
-        actionAnchorIndex: binding?.actionAnchorIndex,
-      });
+      const actionPlan = actionButtons
+        ? resolveMessageActions(item, {
+            editorType,
+            items,
+            messageIndex: index,
+            blocked,
+            userIntent: binding?.userIntent,
+            payloadSourceIndex: binding?.payloadSourceIndex,
+            actionAnchorIndex: binding?.actionAnchorIndex,
+          })
+        : { blocks: [] };
 
       const hideActionsOnReport =
         binding &&
@@ -157,7 +167,7 @@ export function historyToChatMessages(
     let text = visibleText.trim();
     if (!text && item.role === "user") continue;
 
-    const userBinding = findBindingForUserAnchor(items, index);
+    const userBinding = actionButtons ? findBindingForUserAnchor(items, index) : null;
     let userActionPlan;
     if (userBinding) {
       const sourceMessage = items[userBinding.payloadSourceIndex];

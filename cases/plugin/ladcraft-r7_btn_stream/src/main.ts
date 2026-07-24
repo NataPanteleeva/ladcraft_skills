@@ -7,11 +7,14 @@ import {
 } from "./transfer/context-sync";
 import { prepareOutbound } from "./transfer";
 import { captureDiskDocumentIdFromEnvironment, resolveDiskRefContext } from "./transfer/disk-ref";
+import { STREAMING_WORKING_PLACEHOLDER } from "./apply/content-extract";
 import {
-  getStreamingVisibleText,
-  STREAMING_WORKING_PLACEHOLDER,
-} from "./apply/content-extract";
+  applyEditorTasks,
+  collectPendingEditorTasks,
+  taskApplyKey,
+} from "./apply/task-runner";
 import { PLUGIN_VERSION } from "./version";
+import { applyPanelLayoutClass, getPluginFeatures } from "./features";
 import {
   clearDocumentContext,
   clearSessionForDoc,
@@ -33,7 +36,8 @@ import {
   waitForAssistantTurn,
   type HistoryMessage,
 } from "./eai/session";
-import { SessionSseClient } from "./eai/sse";
+import { createChatTransport } from "./eai/transport";
+import { StreamOrchestrator } from "./eai/stream-orchestrator";
 import { extractWidgetPayload } from "./eai/widget";
 import { isVfsNotFoundError, isVfsFileReady } from "./eai/vfs";
 import { getSelectedText } from "./editor/reader";
@@ -51,17 +55,26 @@ import {
 
 type AppScreen = "auth" | "shell" | "chat";
 
-interface ActiveStreamTurn {
-  enabled: boolean;
-  messageId: string | null;
-  sawMessageDone: boolean;
-  syncedAfterDone: boolean;
-  buffer: string;
-  deltaFlushTimer: ReturnType<typeof setTimeout> | null;
-}
-
 class LadcraftR7App {
   private client = new EaiClient();
+  private readonly features = getPluginFeatures();
+  private readonly chatTransport = createChatTransport({
+    client: this.client,
+    features: this.features,
+    fallbackToAgentPath: true,
+  });
+  private readonly streamOrchestrator = new StreamOrchestrator(this.chatTransport, {
+    getMessages: () => this.messages,
+    setMessageText: (messageId, text) => {
+      const msg = this.messages.find((m) => m.id === messageId);
+      if (msg) msg.text = text;
+    },
+    upsertAssistantBubble: (messageId) => this.upsertStreamingAssistant(messageId),
+    patchStreamingDom: (messageId, text) =>
+      updateStreamingAssistantText(this.root, messageId, text),
+    renderChat: () => this.renderChatShell(this.chatStatus),
+    isChatScreen: () => this.screen === "chat",
+  });
   private root: HTMLElement;
   private screen: AppScreen = "auth";
   private editorType: EditorType = "word";
@@ -90,12 +103,8 @@ class LadcraftR7App {
   private widgetPollTimer: ReturnType<typeof setInterval> | null = null;
   private lastChatPaintKey = "";
   private sessionAgentId: string | null = null;
-  private sseClient = new SessionSseClient(this.client, {
-    fallbackToAgentPath: true,
-  });
-  private streamTurn: ActiveStreamTurn | null = null;
-  private readonly sseEnabled =
-    localStorage.getItem("ladcraft_r7_sse_enabled") !== "0";
+  /** User text optimistically shown while POST is in flight (survives history poll). */
+  private pendingOutboundUserText: string | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -103,6 +112,7 @@ class LadcraftR7App {
 
   /** Initialize plugin after Asc.plugin.init. */
   async start(): Promise<void> {
+    applyPanelLayoutClass(this.features);
     captureDiskDocumentIdFromEnvironment();
     this.editorType = this.detectEditorType();
     const cfg = getConfig();
@@ -461,11 +471,83 @@ class LadcraftR7App {
     }
   }
 
+  private async tryApplyEditorTasksFromHistory(): Promise<void> {
+    if (this.screen !== "chat" || !this.sessionId || this.isSending) return;
+
+    const appliedKeys = this.loadAppliedEditorTaskKeys();
+    const pending = collectPendingEditorTasks(this.rawHistory, appliedKeys);
+    if (!pending.length) return;
+
+    const result = await applyEditorTasks(
+      this.editorType,
+      pending.map((item) => item.task),
+    );
+    if (!result.successfulTasks.length) return;
+
+    const successFingerprints = new Set(
+      result.successfulTasks.map((task) => `${task.type}:${JSON.stringify(task.data)}`),
+    );
+    for (const item of pending) {
+      const fingerprint = `${item.task.type}:${JSON.stringify(item.task.data)}`;
+      if (!successFingerprints.has(fingerprint)) continue;
+      appliedKeys.add(taskApplyKey(item.messageId, item.task));
+    }
+    this.persistAppliedEditorTaskKeys(appliedKeys);
+    this.needsEditorRemount = true;
+
+    if (result.summary) {
+      this.chatStatus = result.summary;
+      this.renderChatShell(this.chatStatus, true);
+    }
+  }
+
+  private loadAppliedEditorTaskKeys(): Set<string> {
+    if (!this.sessionId) return new Set();
+    try {
+      const raw = sessionStorage.getItem(`ladcraft_r7_applied_tasks:${this.sessionId}`);
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.filter((item) => typeof item === "string"));
+    } catch {
+      return new Set();
+    }
+  }
+
+  private persistAppliedEditorTaskKeys(keys: Set<string>): void {
+    if (!this.sessionId) return;
+    sessionStorage.setItem(
+      `ladcraft_r7_applied_tasks:${this.sessionId}`,
+      JSON.stringify([...keys]),
+    );
+  }
+
+  private mergePendingOutboundUserMessage(serverMessages: ChatMessage[]): ChatMessage[] {
+    const pending = this.pendingOutboundUserText?.trim();
+    if (!pending) return serverMessages;
+    const alreadyOnServer = serverMessages.some(
+      (m) => m.role === "user" && m.text.trim() === pending,
+    );
+    if (alreadyOnServer) return serverMessages;
+    return [
+      ...serverMessages,
+      {
+        id: `local-pending-${pending.length}`,
+        role: "user",
+        text: this.pendingOutboundUserText!,
+      },
+    ];
+  }
+
   private async loadHistoryFromServer(): Promise<void> {
     if (!this.sessionId) return;
     const history = await getHistoryMessages(this.client, this.sessionId);
     this.rawHistory = history;
-    this.messages = historyToChatMessages(history, { editorType: this.editorType });
+    const serverMessages = historyToChatMessages(history, {
+      editorType: this.editorType,
+      actionButtons: this.features.actionButtons,
+    });
+    this.messages = this.mergePendingOutboundUserMessage(serverMessages);
     this.firstMessageInSession = !this.messages.some((m) => m.role === "user");
   }
 
@@ -591,6 +673,7 @@ class LadcraftR7App {
     this.stopWidgetPoll();
     this.teardownStreamTurn();
     this.isSending = false;
+    this.pendingOutboundUserText = null;
     this.lastChatPaintKey = "";
     unmountChatView(this.root);
 
@@ -655,7 +738,7 @@ class LadcraftR7App {
     const statusBefore = this.chatStatus;
 
     try {
-      if (this.streamTurn?.enabled && !this.streamTurn.sawMessageDone) {
+      if (this.streamOrchestrator.shouldDeferHistorySync()) {
         return;
       }
       await this.syncChatFromServer(agentId);
@@ -674,6 +757,8 @@ class LadcraftR7App {
       this.renderChatShell(this.chatStatus);
       this.syncWidgetPoll();
     }
+
+    void this.tryApplyEditorTasksFromHistory();
 
     if (this.awaitingCompareReport()) {
       this.startHistorySyncPoll(1200);
@@ -695,29 +780,7 @@ class LadcraftR7App {
   }
 
   private teardownStreamTurn(): void {
-    if (this.streamTurn?.deltaFlushTimer) {
-      clearTimeout(this.streamTurn.deltaFlushTimer);
-    }
-    this.streamTurn = null;
-    this.sseClient.unsubscribe();
-  }
-
-  private queueStreamDeltaPaint(messageId: string): void {
-    const turn = this.streamTurn;
-    if (!turn || turn.messageId !== messageId) return;
-    if (turn.deltaFlushTimer != null) return;
-    turn.deltaFlushTimer = setTimeout(() => {
-      const active = this.streamTurn;
-      if (!active || active.messageId !== messageId || this.screen !== "chat") return;
-      active.deltaFlushTimer = null;
-      const displayText = getStreamingVisibleText(active.buffer);
-      const msg = this.messages.find((m) => m.id === messageId);
-      if (msg) msg.text = displayText;
-      const patched = updateStreamingAssistantText(this.root, messageId, displayText);
-      if (!patched) {
-        this.renderChatShell(this.chatStatus);
-      }
-    }, 160);
+    this.streamOrchestrator.teardown();
   }
 
   private upsertStreamingAssistant(messageId: string): void {
@@ -855,6 +918,7 @@ class LadcraftR7App {
     if (!agentId) return;
 
     this.isSending = true;
+    this.pendingOutboundUserText = text;
     this.chatStatus = "Ожидание ответа...";
     const userMsg: ChatMessage = {
       id: `local-${Date.now()}`,
@@ -867,14 +931,7 @@ class LadcraftR7App {
 
     try {
       this.teardownStreamTurn();
-      this.streamTurn = {
-        enabled: this.sseEnabled,
-        messageId: null,
-        sawMessageDone: false,
-        syncedAfterDone: false,
-        buffer: "",
-        deltaFlushTimer: null,
-      };
+      this.streamOrchestrator.beginTurn();
 
       let beforeCount = 0;
       try {
@@ -888,7 +945,11 @@ class LadcraftR7App {
 
       try {
         if (usesVfsSnapshot(this.currentTransferProfile())) {
-          await this.syncDocumentContextForChat();
+          await this.withSendTimeout(
+            this.syncDocumentContextForChat(),
+            90_000,
+            "Синхронизация документа",
+          );
         } else if (usesDiskRef(this.currentTransferProfile())) {
           this.applyDiskRefContext();
         }
@@ -912,47 +973,8 @@ class LadcraftR7App {
       }
 
       const activeSessionId = this.sessionId;
-      if (activeSessionId && this.streamTurn?.enabled) {
-        this.sseClient.subscribe(activeSessionId, {
-          onConnectionState: () => undefined,
-          onMessageStart: (messageId) => {
-            if (this.screen !== "chat") return;
-            const turn = this.streamTurn;
-            if (!turn) return;
-            turn.messageId = messageId;
-            turn.buffer = "";
-            this.upsertStreamingAssistant(messageId);
-          },
-          onDelta: (messageId, _delta, accumulated) => {
-            if (this.screen !== "chat") return;
-            const turn = this.streamTurn;
-            if (!turn) return;
-            if (!turn.messageId) {
-              turn.messageId = messageId;
-              this.upsertStreamingAssistant(messageId);
-            }
-            if (turn.messageId !== messageId) return;
-            turn.buffer = accumulated;
-            this.queueStreamDeltaPaint(messageId);
-          },
-          onMessageDone: (messageId) => {
-            const turn = this.streamTurn;
-            if (!turn) return;
-            if (!turn.messageId) turn.messageId = messageId;
-            turn.sawMessageDone = true;
-          },
-          onReplayReset: () => {
-            const turn = this.streamTurn;
-            if (!turn) return;
-            turn.enabled = false;
-            turn.sawMessageDone = true;
-          },
-          onError: () => {
-            const turn = this.streamTurn;
-            if (!turn) return;
-            turn.enabled = false;
-          },
-        });
+      if (activeSessionId && this.features.sseStreaming) {
+        this.streamOrchestrator.subscribe(activeSessionId);
       }
 
       await this.sendUserMessage(text, agentId);
@@ -981,20 +1003,15 @@ class LadcraftR7App {
           this.renderChatShell(this.chatStatus);
         },
         async () => {
-          if (this.streamTurn?.enabled && !this.streamTurn.sawMessageDone) {
-            return;
-          }
-          if (this.streamTurn?.enabled && this.streamTurn.sawMessageDone) {
-            if (this.streamTurn.syncedAfterDone) return;
-            this.streamTurn.syncedAfterDone = true;
-          }
-          const before = this.historyFingerprint();
-          await this.syncChatFromServer(agentId);
-          if (this.historyFingerprint() !== before) {
-            this.renderChatShell(this.chatStatus);
-          }
+          await this.streamOrchestrator.runOnPollSync(async () => {
+            const before = this.historyFingerprint();
+            await this.syncChatFromServer(agentId);
+            if (this.historyFingerprint() !== before) {
+              this.renderChatShell(this.chatStatus);
+            }
+          });
         },
-        { pollMs: this.streamTurn?.enabled ? 5000 : 1200 },
+        { pollMs: this.streamOrchestrator.getWaitPollMs() },
       );
 
       if (!turn) {
@@ -1024,6 +1041,7 @@ class LadcraftR7App {
       }
 
       await this.syncChatFromServer(agentId);
+      await this.tryApplyEditorTasksFromHistory();
       this.chatStatus = this.awaitingCompareReport()
         ? "Агент выполняет сравнение..."
         : "Готово";
@@ -1042,6 +1060,7 @@ class LadcraftR7App {
     } finally {
       this.teardownStreamTurn();
       this.isSending = false;
+      this.pendingOutboundUserText = null;
       this.stopHistorySyncPoll();
       if (this.screen !== "chat") return;
       if (this.awaitingCompareReport()) {
@@ -1053,6 +1072,27 @@ class LadcraftR7App {
         this.startHistorySyncPoll(2500);
       }
       this.renderChatShell(this.chatStatus);
+    }
+  }
+
+  private async withSendTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`${label}: таймаут ${Math.round(timeoutMs / 1000)} с`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer != null) clearTimeout(timer);
     }
   }
 

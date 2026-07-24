@@ -1,0 +1,69 @@
+---
+description: Правила создания навыков для Ladcraft
+alwaysApply: true
+---
+
+Мы создаем навыки для сервиса Ladcraft.
+
+Основной источник правил: `docs/ru/` + фактический контракт локального `dev-server`.
+Legacy-материалы в `docs/legacy/` используются только как исторический reference.
+
+0. **Обязательный bootstrap (из корня архива `cursor_ladcraft/`).**
+- `npm --prefix dev-server install`
+- `npm --prefix dev-server run dev`
+- открой `http://localhost:5174`
+- проверь `.cursor/mcp.json`: у `mcpServers["skilled-agent"]` должен быть `disabled: false`
+
+`cursor_ladcraft` самодостаточен: для работы с навыками не нужен внешний monorepo `codebase`.
+
+Дополнительно (по необходимости): remote test/publish.
+
+1. **Перед созданием или правкой любого навыка прочитай документы в `docs/ru/`:**
+   - `docs/ru/rukovodstvo-navyki-ladcraft.md` (контракты и рабочий формат),
+   - `docs/ru/migraciya-navykov-ladcraft.md` (перенос из прототипа),
+   - `docs/ru/kriterii-revyu-navyka.md` (чеклист ревью),
+   - `docs/ru/skill-function-tutorial.md` (native `handler(state, params)` и runtime/state).
+   Создавать или править навыки без учета этого набора нельзя.
+
+2. Для разработки навыка используй локальный dev-server и web-ui:
+- редактируй навыки в папке `skills/<имя>/` (структура `SKILL.md`, `scripts/`, `widgets/`);
+- запускай локальное тестирование скриптов;
+- при необходимости выполняй remote test и publish через web-ui.
+
+2.0. **Формат `scripts/*.js` в `cursor_ladcraft`:**
+- в каждом tool-файле — **только** `async function handler(state, params) { ... }`; вход `params`, контекст `state.environment` / `state.capabilities` и т.д. по контракту Ladcraft;
+- не использовать целевой «local-style» без `handler` (`input`, `returnResult`, `returnResultInWidget` как единственный режим файла);
+- не добавляй `module.exports`, `require`, `import`;
+- в файле должен оставаться только `handler` и его тело; любой VM-bootstrap-хвост после объявления `handler` запрещён;
+- запрещено сохранять/публиковать хвосты вида `const result = await handler(...); returnResult(result);`, `const __result = await handler(...); returnResult(__result);` и варианты с `returnResultInWidget(...)`;
+- устаревший код при миграции переводится в `handler` (см. `docs/ru/migraciya-navykov-ladcraft.md`).
+
+2.1. **Короткий env-алгоритм (обязателен для интеграций):**
+- сначала собери карту env-полей;
+- `environment.app` -> общие app-настройки интеграции (API key, client id/secret, base URL);
+- `environment.user` -> пользовательские параметры установки навыка;
+- `skillStorage` -> только runtime-state (кэш, счетчики, refresh-state), не постоянные креды.
+
+2.2. **SKILL.md, meta и publish (кратко):**
+- в тексте `SKILL.md` запрещены вызовы инструментов, для которых нет файла `scripts/<имя>.meta.md` в этой же папке навыка (исключение — явно помеченные core-tools платформы вроде `delegateToAgent` с проверкой, что они есть в runtime);
+- ключи `state.environment.user`/`userEnv`, которые читает tool, должны быть объявлены в `mcp_spec.tools[].environment.user` для соответствующего инструмента;
+- если в навыке один виджет, он должен быть согласован с output-контрактом инструмента;
+- «отключённый» legacy-tool нужно удалять физически (`*.js` + `*.meta.md`), иначе он попадёт в payload.
+
+3. Авторизация и refresh токена:
+- при `401/403` считай токен протухшим;
+- используй один из двух вариантов в dev-server web-ui:
+  - вход через email/password;
+  - ручная вставка нового access token;
+- `LADCRAFT_REAUTH_URL` (если задан) можно использовать как вспомогательную ссылку;
+- после обновления повтори действие.
+
+4. В скачанном архиве MCP работает в read-only режиме:
+- для чтения remote-навыков используй `skills_list` и `skills_get`;
+- generic `skills_get_instructions` для `cursor_ladcraft` не использовать;
+- legacy write-tools (`skills_create`, `skills_update`, `skills_delete`, `skills_import`, `skills_export`) не использовать.
+
+5. Если пользователь просит конвертировать навык из прототипа:
+- следуй `docs/ru/migraciya-navykov-ladcraft.md`;
+- работай только с копией навыка в `skills/`, исходник в `skills_prototype/` не меняй;
+- после адаптации обязательно прогоняй локальный тест перед publish.

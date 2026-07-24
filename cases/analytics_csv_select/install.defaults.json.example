@@ -1,0 +1,5 @@
+{
+  "R7_DISK_BASE_URL": "https://cddisk.example.ru",
+  "R7_DISK_LOGIN": "user@example.com",
+  "R7_DISK_PASSWORD": "YOUR_PASSWORD_HERE"
+}

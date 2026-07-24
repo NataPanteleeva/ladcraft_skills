@@ -1,0 +1,21 @@
+{
+  "id": "r7-document-compare-v2-monolith",
+  "title": "R7 compare v2 — monolith skill",
+  "status": "approved",
+  "verifiedAt": "2026-06-29",
+  "tags": ["compare-r7-v2", "monolith", "bash-head", "r7"],
+  "sourceCase": "cases/compare-r7_v2",
+  "supersedes": "r7-document-compare-v2-3skills",
+  "prod": {
+    "agentId": "tc04UdOHJpv0YYKJjLbF8",
+    "skills": [
+      {
+        "slug": "doc-compare-v2",
+        "catalogId": "WPzlNroFg9z16bwBAnoBL",
+        "version": "13.0.0",
+        "tools": ["r7_persist_compare_report", "r7_render_and_deliver_docx"]
+      }
+    ]
+  },
+  "snapshottedAt": "2026-06-29T13:00:00.000Z"
+}

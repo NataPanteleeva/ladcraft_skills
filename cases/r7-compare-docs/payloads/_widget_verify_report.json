@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "localChecks": {
+    "no_ejs": true,
+    "has_buttons": true
+  },
+  "prodChecks": {
+    "version": "9.0.0",
+    "tool_widget_is_object": true,
+    "content_no_ejs": true,
+    "content_has_r7_compare_actions": true,
+    "content_has_insert_btn": true,
+    "installed_id": "8xw6w5_fnQaQKugyGsyoB",
+    "installed_tool_widget_is_object": true,
+    "installed_content_no_ejs": true,
+    "installed_content_has_r7_compare_actions": true,
+    "installed_version": "7.0.0",
+    "latest_version": "9.0.0",
+    "installed_matches_catalog": true
+  },
+  "resolveChecks": {
+    "slug_old": true,
+    "slug_new": true,
+    "ejs": true,
+    "static_html": true,
+    "empty": true
+  },
+  "note": "Live session widgetHtml check: start a new COMPARE in Ladcraft web or R7 after rebuild; history kind=widget should contain static HTML without <%"
+}

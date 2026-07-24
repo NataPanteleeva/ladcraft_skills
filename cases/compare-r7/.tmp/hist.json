@@ -1,0 +1,357 @@
+{
+  "data": [
+    {
+      "id": "FH0IzL1rn4vxKKNHHA2uW",
+      "role": "user",
+      "kind": "text",
+      "content": "Привет",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "attached_files": null,
+      "metadata": {
+        "timestamp": "2026-06-28T05:15:26.482Z",
+        "agent_request": {
+          "content": "Привет",
+          "mentioned": {
+            "files": [
+              {
+                "file_id": "A7mPKjEMlUaWc9Pp2XXW8",
+                "file_name": "/session/r7/r7-word_smoketest.json",
+                "mime_type": "application/json"
+              }
+            ]
+          },
+          "assistant_mode": "execution"
+        }
+      }
+    },
+    {
+      "id": "D54ccX4FAyg5N60zgCRJ0",
+      "role": "assistant",
+      "kind": "text",
+      "content": null,
+      "response_timeline": [
+        {
+          "id": "D54ccX4FAyg5N60zgCRJ0:timeline:0",
+          "kind": "reasoning",
+          "order": 0,
+          "content": "\nThe user said \"Привет\" (Hello in Russian). This is the START phase. According to the agent profile instruction, I need to call `startup_compare` with the session file from the mentioned.files.\n\nThe mentioned file is: `/session/r7/r7-word_smoketest.json`\n\nLet me call the `startup_compare` tool.\n"
+        },
+        {
+          "id": "D54ccX4FAyg5N60zgCRJ0:timeline:1",
+          "kind": "tool_group",
+          "order": 1,
+          "status": "started",
+          "tool_call_ids": [
+            "call_function_jujoye983v7d_1"
+          ],
+          "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+        }
+      ],
+      "tool_calls": [
+        {
+          "id": "call_function_jujoye983v7d_1",
+          "name": "skills",
+          "type": "function",
+          "command": "skills activate r7-compare-toolkit",
+          "content": "Подключил навык r7-compare-toolkit. Инструменты: startup_compare; prepare_compare",
+          "arguments": "{\"action\":\"activate\",\"skill_ref\":\"r7-compare-toolkit\"}",
+          "sse_events": [
+            {
+              "data": {
+                "data": {
+                  "command": "skills activate r7-compare-toolkit",
+                  "arguments": {
+                    "action": "activate",
+                    "skill_ref": "r7-compare-toolkit"
+                  },
+                  "tool_name": "skills",
+                  "message_id": "D54ccX4FAyg5N60zgCRJ0",
+                  "tool_call_id": "call_function_jujoye983v7d_1",
+                  "display_title": "Подключаю рабочий skill",
+                  "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+                },
+                "type": "tool_call_start",
+                "timestamp": "2026-06-28T05:15:31.492Z",
+                "session_id": "h8TOZZSu_XrTmQBa0JtvD"
+              },
+              "event": "tool_call_start",
+              "received_at": "2026-06-28T05:15:31.492Z"
+            },
+            {
+              "data": {
+                "data": {
+                  "result": {
+                    "tools": [
+                      "startup_compare",
+                      "prepare_compare"
+                    ],
+                    "success": true,
+                    "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+                    "skill_ref": "r7-compare-toolkit",
+                    "skill_name": "r7-compare-toolkit",
+                    "added_iterations": 5,
+                    "skill_instructions": "Единый навык **compare-r7** (тонкий orchestrator): START, COMPARE и чтение документов.\r\n\r\n## Фаза START (первое сообщение)\r\n\r\n**Один tool:** `startup_compare({ \"session_file\": \"<mentioned.files[0].file_name дословно>\" })`\r\n\r\n- **Не** вызывай `skills activate`, bash, `read_r7_snapshot_text`.\r\n- `session_file` — **копия** path из `mentioned.files`, не собирай path вручную.\r\n- Ответ tool → `greeting_markdown` **дословно** в чат.\r\n- Сохрани **`session_file`** и **`doc_key`** из ответа tool (канонические).\r\n- Если `found: false` — не переходи к сравнению; предложи повторить приветствие.\r\n\r\n```\r\nstartup_compare({ \"session_file\": \"/session/r7/r7-word_….json\" })\r\n```\r\n\r\n## Фаза COMPARE (шаблон выбран)\r\n\r\n**Один tool, затем сразу отчёт** — без промежуточных статусов.\r\n\r\n### 1. prepare_compare\r\n\r\n```\r\nprepare_compare({\r\n  \"template_name\": \"ТТ_десктоп.md\",\r\n  \"session_file\": \"<session_file из startup_compare>\"\r\n})\r\n```\r\n\r\n- `session_file` — **только** из ответа `startup_compare`, не из reasoning.\r\n- Если `prepare_compare.ok === false` — **не сравнивай**; сообщи ошибку пользователю.\r\n\r\n### 2. Семантическое сравнение (LLM)\r\n\r\nПосле успешного `prepare_compare` — **не вызывай** другие tools.\r\n\r\nИспользуй `template_text` и `document_text` из ответа tool.\r\n\r\n**Сравнивай по смыслу.** **Игнорируй:** сдвиги нумерации, колонку «наличие», HTML vs markdown.\r\n\r\nТипы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n### 3. Выход в content\r\n\r\n1. Краткое резюме (5–8 строк)\r\n2. Таблица расхождений до **10** строк в чате (№ | Параметр | Эталон | Документ | Тип)\r\n3. «**Расхождений: N**»\r\n4. Блок `r7.task` с CompareReport\r\n5. «**Что дальше?**» — вставить / скачать / docx\r\n\r\n### CompareReport (обязателен в r7.task)\r\n\r\n```json\r\n{\r\n  \"schema\": \"doc-compare/v1\",\r\n  \"title\": \"Сравнение: …\",\r\n  \"suggestedFileName\": \"сравнение_{шаблон}.docx\",\r\n  \"chatMarkdown\": \"<видимый markdown без r7.task>\",\r\n  \"meta\": { \"totalDiffs\": N, \"documentA\": { \"name\": \"…\" }, \"documentB\": { \"name\": \"…\" } },\r\n  \"sections\": [ \"… все расхождения …\" ]\r\n}\r\n```\r\n\r\n**`chatMarkdown`** — дословная копия видимого отчёта (резюме + таблица + «Расхождений: N»).\r\n\r\n### r7.task\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<JSON.stringify(CompareReport)>\",\"actions\":[]}}]\r\n```\r\n\r\n## Запреты (happy path)\r\n\r\n| Запрещено | Вместо этого |\r\n|-----------|--------------|\r\n| `skills activate` | tools уже в binding |\r\n| bash на START/COMPARE | `startup_compare` / `prepare_compare` |\r\n| `read_r7_snapshot_text` | `prepare_compare` |\r\n| `compare_documents` | LLM compare здесь |\r\n| Промежуточные статусы | сразу полный отчёт |\r\n| CompareReport без `chatMarkdown` | копия видимого markdown |\r\n| Compare при `found: false` | retry startup |\r\n\r\n## Диагностика (только по явной просьбе)\r\n\r\nСкрипты `resolve_r7_document`, `list_session_files`, `list_templates` — не вызывай на happy path.",
+                    "skill_state_marker": {
+                      "type": "skill_activation",
+                      "action": "activated",
+                      "active": true,
+                      "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+                      "skill_ref": "r7-compare-toolkit",
+                      "skill_name": "r7-compare-toolkit"
+                    }
+                  },
+                  "content": "Подключил навык r7-compare-toolkit. Инструменты: startup_compare; prepare_compare",
+                  "success": true,
+                  "tool_name": "skills",
+                  "message_id": "D54ccX4FAyg5N60zgCRJ0",
+                  "tool_call_id": "call_function_jujoye983v7d_1",
+                  "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+                },
+                "type": "tool_call_result",
+                "timestamp": "2026-06-28T05:15:31.656Z",
+                "session_id": "h8TOZZSu_XrTmQBa0JtvD"
+              },
+              "event": "tool_call_result",
+              "received_at": "2026-06-28T05:15:31.656Z"
+            }
+          ],
+          "display_title": "Подключаю рабочий skill",
+          "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0",
+          "result": {
+            "success": true,
+            "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+            "skill_ref": "r7-compare-toolkit",
+            "skill_name": "r7-compare-toolkit",
+            "skill_instructions": "Единый навык **compare-r7** (тонкий orchestrator): START, COMPARE и чтение документов.\r\n\r\n## Фаза START (первое сообщение)\r\n\r\n**Один tool:** `startup_compare({ \"session_file\": \"<mentioned.files[0].file_name дословно>\" })`\r\n\r\n- **Не** вызывай `skills activate`, bash, `read_r7_snapshot_text`.\r\n- `session_file` — **копия** path из `mentioned.files`, не собирай path вручную.\r\n- Ответ tool → `greeting_markdown` **дословно** в чат.\r\n- Сохрани **`session_file`** и **`doc_key`** из ответа tool (канонические).\r\n- Если `found: false` — не переходи к сравнению; предложи повторить приветствие.\r\n\r\n```\r\nstartup_compare({ \"session_file\": \"/session/r7/r7-word_….json\" })\r\n```\r\n\r\n## Фаза COMPARE (шаблон выбран)\r\n\r\n**Один tool, затем сразу отчёт** — без промежуточных статусов.\r\n\r\n### 1. prepare_compare\r\n\r\n```\r\nprepare_compare({\r\n  \"template_name\": \"ТТ_десктоп.md\",\r\n  \"session_file\": \"<session_file из startup_compare>\"\r\n})\r\n```\r\n\r\n- `session_file` — **только** из ответа `startup_compare`, не из reasoning.\r\n- Если `prepare_compare.ok === false` — **не сравнивай**; сообщи ошибку пользователю.\r\n\r\n### 2. Семантическое сравнение (LLM)\r\n\r\nПосле успешного `prepare_compare` — **не вызывай** другие tools.\r\n\r\nИспользуй `template_text` и `document_text` из ответа tool.\r\n\r\n**Сравнивай по смыслу.** **Игнорируй:** сдвиги нумерации, колонку «наличие», HTML vs markdown.\r\n\r\nТипы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n### 3. Выход в content\r\n\r\n1. Краткое резюме (5–8 строк)\r\n2. Таблица расхождений до **10** строк в чате (№ | Параметр | Эталон | Документ | Тип)\r\n3. «**Расхождений: N**»\r\n4. Блок `r7.task` с CompareReport\r\n5. «**Что дальше?**» — вставить / скачать / docx\r\n\r\n### CompareReport (обязателен в r7.task)\r\n\r\n```json\r\n{\r\n  \"schema\": \"doc-compare/v1\",\r\n  \"title\": \"Сравнение: …\",\r\n  \"suggestedFileName\": \"сравнение_{шаблон}.docx\",\r\n  \"chatMarkdown\": \"<видимый markdown без r7.task>\",\r\n  \"meta\": { \"totalDiffs\": N, \"documentA\": { \"name\": \"…\" }, \"documentB\": { \"name\": \"…\" } },\r\n  \"sections\": [ \"… все расхождения …\" ]\r\n}\r\n```\r\n\r\n**`chatMarkdown`** — дословная копия видимого отчёта (резюме + таблица + «Расхождений: N»).\r\n\r\n### r7.task\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<JSON.stringify(CompareReport)>\",\"actions\":[]}}]\r\n```\r\n\r\n## Запреты (happy path)\r\n\r\n| Запрещено | Вместо этого |\r\n|-----------|--------------|\r\n| `skills activate` | tools уже в binding |\r\n| bash на START/COMPARE | `startup_compare` / `prepare_compare` |\r\n| `read_r7_snapshot_text` | `prepare_compare` |\r\n| `compare_documents` | LLM compare здесь |\r\n| Промежуточные статусы | сразу полный отчёт |\r\n| CompareReport без `chatMarkdown` | копия видимого markdown |\r\n| Compare при `found: false` | retry startup |\r\n\r\n## Диагностика (только по явной просьбе)\r\n\r\nСкрипты `resolve_r7_document`, `list_session_files`, `list_templates` — не вызывай на happy path.",
+            "tools": [
+              "startup_compare",
+              "prepare_compare"
+            ],
+            "added_iterations": 5,
+            "skill_state_marker": {
+              "type": "skill_activation",
+              "action": "activated",
+              "active": true,
+              "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+              "skill_ref": "r7-compare-toolkit",
+              "skill_name": "r7-compare-toolkit"
+            }
+          },
+          "success": true
+        }
+      ],
+      "tool_call_id": null,
+      "attached_files": null,
+      "metadata": {
+        "timestamp": "2026-06-28T05:15:31.656Z",
+        "reasoning": "\nThe user said \"Привет\" (Hello in Russian). This is the START phase. According to the agent profile instruction, I need to call `startup_compare` with the session file from the mentioned.files.\n\nThe mentioned file is: `/session/r7/r7-word_smoketest.json`\n\nLet me call the `startup_compare` tool.\n",
+        "sse_message_id": "D54ccX4FAyg5N60zgCRJ0",
+        "response_version": {
+          "run_id": "6OcW4yVKyfEGCNWGDuZSy",
+          "group_id": "agent-response:FH0IzL1rn4vxKKNHHA2uW",
+          "regenerated": false,
+          "source_user_message_id": "FH0IzL1rn4vxKKNHHA2uW"
+        },
+        "response_timeline": [
+          {
+            "id": "D54ccX4FAyg5N60zgCRJ0:timeline:0",
+            "kind": "reasoning",
+            "order": 0,
+            "content": "\nThe user said \"Привет\" (Hello in Russian). This is the START phase. According to the agent profile instruction, I need to call `startup_compare` with the session file from the mentioned.files.\n\nThe mentioned file is: `/session/r7/r7-word_smoketest.json`\n\nLet me call the `startup_compare` tool.\n"
+          },
+          {
+            "id": "D54ccX4FAyg5N60zgCRJ0:timeline:1",
+            "kind": "tool_group",
+            "order": 1,
+            "status": "started",
+            "tool_call_ids": [
+              "call_function_jujoye983v7d_1"
+            ],
+            "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+          }
+        ],
+        "response_timeline_last_seq": 7
+      },
+      "versions": [
+        {
+          "id": "D54ccX4FAyg5N60zgCRJ0",
+          "role": "assistant",
+          "kind": "text",
+          "content": null,
+          "response_timeline": [
+            {
+              "id": "D54ccX4FAyg5N60zgCRJ0:timeline:0",
+              "kind": "reasoning",
+              "order": 0,
+              "content": "\nThe user said \"Привет\" (Hello in Russian). This is the START phase. According to the agent profile instruction, I need to call `startup_compare` with the session file from the mentioned.files.\n\nThe mentioned file is: `/session/r7/r7-word_smoketest.json`\n\nLet me call the `startup_compare` tool.\n"
+            },
+            {
+              "id": "D54ccX4FAyg5N60zgCRJ0:timeline:1",
+              "kind": "tool_group",
+              "order": 1,
+              "status": "started",
+              "tool_call_ids": [
+                "call_function_jujoye983v7d_1"
+              ],
+              "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+            }
+          ],
+          "tool_calls": [
+            {
+              "id": "call_function_jujoye983v7d_1",
+              "name": "skills",
+              "type": "function",
+              "command": "skills activate r7-compare-toolkit",
+              "content": "Подключил навык r7-compare-toolkit. Инструменты: startup_compare; prepare_compare",
+              "arguments": "{\"action\":\"activate\",\"skill_ref\":\"r7-compare-toolkit\"}",
+              "sse_events": [
+                {
+                  "data": {
+                    "data": {
+                      "command": "skills activate r7-compare-toolkit",
+                      "arguments": {
+                        "action": "activate",
+                        "skill_ref": "r7-compare-toolkit"
+                      },
+                      "tool_name": "skills",
+                      "message_id": "D54ccX4FAyg5N60zgCRJ0",
+                      "tool_call_id": "call_function_jujoye983v7d_1",
+                      "display_title": "Подключаю рабочий skill",
+                      "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+                    },
+                    "type": "tool_call_start",
+                    "timestamp": "2026-06-28T05:15:31.492Z",
+                    "session_id": "h8TOZZSu_XrTmQBa0JtvD"
+                  },
+                  "event": "tool_call_start",
+                  "received_at": "2026-06-28T05:15:31.492Z"
+                },
+                {
+                  "data": {
+                    "data": {
+                      "result": {
+                        "tools": [
+                          "startup_compare",
+                          "prepare_compare"
+                        ],
+                        "success": true,
+                        "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+                        "skill_ref": "r7-compare-toolkit",
+                        "skill_name": "r7-compare-toolkit",
+                        "added_iterations": 5,
+                        "skill_instructions": "Единый навык **compare-r7** (тонкий orchestrator): START, COMPARE и чтение документов.\r\n\r\n## Фаза START (первое сообщение)\r\n\r\n**Один tool:** `startup_compare({ \"session_file\": \"<mentioned.files[0].file_name дословно>\" })`\r\n\r\n- **Не** вызывай `skills activate`, bash, `read_r7_snapshot_text`.\r\n- `session_file` — **копия** path из `mentioned.files`, не собирай path вручную.\r\n- Ответ tool → `greeting_markdown` **дословно** в чат.\r\n- Сохрани **`session_file`** и **`doc_key`** из ответа tool (канонические).\r\n- Если `found: false` — не переходи к сравнению; предложи повторить приветствие.\r\n\r\n```\r\nstartup_compare({ \"session_file\": \"/session/r7/r7-word_….json\" })\r\n```\r\n\r\n## Фаза COMPARE (шаблон выбран)\r\n\r\n**Один tool, затем сразу отчёт** — без промежуточных статусов.\r\n\r\n### 1. prepare_compare\r\n\r\n```\r\nprepare_compare({\r\n  \"template_name\": \"ТТ_десктоп.md\",\r\n  \"session_file\": \"<session_file из startup_compare>\"\r\n})\r\n```\r\n\r\n- `session_file` — **только** из ответа `startup_compare`, не из reasoning.\r\n- Если `prepare_compare.ok === false` — **не сравнивай**; сообщи ошибку пользователю.\r\n\r\n### 2. Семантическое сравнение (LLM)\r\n\r\nПосле успешного `prepare_compare` — **не вызывай** другие tools.\r\n\r\nИспользуй `template_text` и `document_text` из ответа tool.\r\n\r\n**Сравнивай по смыслу.** **Игнорируй:** сдвиги нумерации, колонку «наличие», HTML vs markdown.\r\n\r\nТипы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n### 3. Выход в content\r\n\r\n1. Краткое резюме (5–8 строк)\r\n2. Таблица расхождений до **10** строк в чате (№ | Параметр | Эталон | Документ | Тип)\r\n3. «**Расхождений: N**»\r\n4. Блок `r7.task` с CompareReport\r\n5. «**Что дальше?**» — вставить / скачать / docx\r\n\r\n### CompareReport (обязателен в r7.task)\r\n\r\n```json\r\n{\r\n  \"schema\": \"doc-compare/v1\",\r\n  \"title\": \"Сравнение: …\",\r\n  \"suggestedFileName\": \"сравнение_{шаблон}.docx\",\r\n  \"chatMarkdown\": \"<видимый markdown без r7.task>\",\r\n  \"meta\": { \"totalDiffs\": N, \"documentA\": { \"name\": \"…\" }, \"documentB\": { \"name\": \"…\" } },\r\n  \"sections\": [ \"… все расхождения …\" ]\r\n}\r\n```\r\n\r\n**`chatMarkdown`** — дословная копия видимого отчёта (резюме + таблица + «Расхождений: N»).\r\n\r\n### r7.task\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<JSON.stringify(CompareReport)>\",\"actions\":[]}}]\r\n```\r\n\r\n## Запреты (happy path)\r\n\r\n| Запрещено | Вместо этого |\r\n|-----------|--------------|\r\n| `skills activate` | tools уже в binding |\r\n| bash на START/COMPARE | `startup_compare` / `prepare_compare` |\r\n| `read_r7_snapshot_text` | `prepare_compare` |\r\n| `compare_documents` | LLM compare здесь |\r\n| Промежуточные статусы | сразу полный отчёт |\r\n| CompareReport без `chatMarkdown` | копия видимого markdown |\r\n| Compare при `found: false` | retry startup |\r\n\r\n## Диагностика (только по явной просьбе)\r\n\r\nСкрипты `resolve_r7_document`, `list_session_files`, `list_templates` — не вызывай на happy path.",
+                        "skill_state_marker": {
+                          "type": "skill_activation",
+                          "action": "activated",
+                          "active": true,
+                          "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+                          "skill_ref": "r7-compare-toolkit",
+                          "skill_name": "r7-compare-toolkit"
+                        }
+                      },
+                      "content": "Подключил навык r7-compare-toolkit. Инструменты: startup_compare; prepare_compare",
+                      "success": true,
+                      "tool_name": "skills",
+                      "message_id": "D54ccX4FAyg5N60zgCRJ0",
+                      "tool_call_id": "call_function_jujoye983v7d_1",
+                      "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+                    },
+                    "type": "tool_call_result",
+                    "timestamp": "2026-06-28T05:15:31.656Z",
+                    "session_id": "h8TOZZSu_XrTmQBa0JtvD"
+                  },
+                  "event": "tool_call_result",
+                  "received_at": "2026-06-28T05:15:31.656Z"
+                }
+              ],
+              "display_title": "Подключаю рабочий skill",
+              "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0",
+              "result": {
+                "success": true,
+                "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+                "skill_ref": "r7-compare-toolkit",
+                "skill_name": "r7-compare-toolkit",
+                "skill_instructions": "Единый навык **compare-r7** (тонкий orchestrator): START, COMPARE и чтение документов.\r\n\r\n## Фаза START (первое сообщение)\r\n\r\n**Один tool:** `startup_compare({ \"session_file\": \"<mentioned.files[0].file_name дословно>\" })`\r\n\r\n- **Не** вызывай `skills activate`, bash, `read_r7_snapshot_text`.\r\n- `session_file` — **копия** path из `mentioned.files`, не собирай path вручную.\r\n- Ответ tool → `greeting_markdown` **дословно** в чат.\r\n- Сохрани **`session_file`** и **`doc_key`** из ответа tool (канонические).\r\n- Если `found: false` — не переходи к сравнению; предложи повторить приветствие.\r\n\r\n```\r\nstartup_compare({ \"session_file\": \"/session/r7/r7-word_….json\" })\r\n```\r\n\r\n## Фаза COMPARE (шаблон выбран)\r\n\r\n**Один tool, затем сразу отчёт** — без промежуточных статусов.\r\n\r\n### 1. prepare_compare\r\n\r\n```\r\nprepare_compare({\r\n  \"template_name\": \"ТТ_десктоп.md\",\r\n  \"session_file\": \"<session_file из startup_compare>\"\r\n})\r\n```\r\n\r\n- `session_file` — **только** из ответа `startup_compare`, не из reasoning.\r\n- Если `prepare_compare.ok === false` — **не сравнивай**; сообщи ошибку пользователю.\r\n\r\n### 2. Семантическое сравнение (LLM)\r\n\r\nПосле успешного `prepare_compare` — **не вызывай** другие tools.\r\n\r\nИспользуй `template_text` и `document_text` из ответа tool.\r\n\r\n**Сравнивай по смыслу.** **Игнорируй:** сдвиги нумерации, колонку «наличие», HTML vs markdown.\r\n\r\nТипы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n### 3. Выход в content\r\n\r\n1. Краткое резюме (5–8 строк)\r\n2. Таблица расхождений до **10** строк в чате (№ | Параметр | Эталон | Документ | Тип)\r\n3. «**Расхождений: N**»\r\n4. Блок `r7.task` с CompareReport\r\n5. «**Что дальше?**» — вставить / скачать / docx\r\n\r\n### CompareReport (обязателен в r7.task)\r\n\r\n```json\r\n{\r\n  \"schema\": \"doc-compare/v1\",\r\n  \"title\": \"Сравнение: …\",\r\n  \"suggestedFileName\": \"сравнение_{шаблон}.docx\",\r\n  \"chatMarkdown\": \"<видимый markdown без r7.task>\",\r\n  \"meta\": { \"totalDiffs\": N, \"documentA\": { \"name\": \"…\" }, \"documentB\": { \"name\": \"…\" } },\r\n  \"sections\": [ \"… все расхождения …\" ]\r\n}\r\n```\r\n\r\n**`chatMarkdown`** — дословная копия видимого отчёта (резюме + таблица + «Расхождений: N»).\r\n\r\n### r7.task\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<JSON.stringify(CompareReport)>\",\"actions\":[]}}]\r\n```\r\n\r\n## Запреты (happy path)\r\n\r\n| Запрещено | Вместо этого |\r\n|-----------|--------------|\r\n| `skills activate` | tools уже в binding |\r\n| bash на START/COMPARE | `startup_compare` / `prepare_compare` |\r\n| `read_r7_snapshot_text` | `prepare_compare` |\r\n| `compare_documents` | LLM compare здесь |\r\n| Промежуточные статусы | сразу полный отчёт |\r\n| CompareReport без `chatMarkdown` | копия видимого markdown |\r\n| Compare при `found: false` | retry startup |\r\n\r\n## Диагностика (только по явной просьбе)\r\n\r\nСкрипты `resolve_r7_document`, `list_session_files`, `list_templates` — не вызывай на happy path.",
+                "tools": [
+                  "startup_compare",
+                  "prepare_compare"
+                ],
+                "added_iterations": 5,
+                "skill_state_marker": {
+                  "type": "skill_activation",
+                  "action": "activated",
+                  "active": true,
+                  "skill_id": "WsZ_m5mPNzJ3YQ6wP3IUw",
+                  "skill_ref": "r7-compare-toolkit",
+                  "skill_name": "r7-compare-toolkit"
+                }
+              },
+              "success": true
+            }
+          ],
+          "tool_call_id": null,
+          "attached_files": null,
+          "metadata": {
+            "timestamp": "2026-06-28T05:15:31.656Z",
+            "reasoning": "\nThe user said \"Привет\" (Hello in Russian). This is the START phase. According to the agent profile instruction, I need to call `startup_compare` with the session file from the mentioned.files.\n\nThe mentioned file is: `/session/r7/r7-word_smoketest.json`\n\nLet me call the `startup_compare` tool.\n",
+            "sse_message_id": "D54ccX4FAyg5N60zgCRJ0",
+            "response_version": {
+              "run_id": "6OcW4yVKyfEGCNWGDuZSy",
+              "group_id": "agent-response:FH0IzL1rn4vxKKNHHA2uW",
+              "regenerated": false,
+              "source_user_message_id": "FH0IzL1rn4vxKKNHHA2uW"
+            },
+            "response_timeline": [
+              {
+                "id": "D54ccX4FAyg5N60zgCRJ0:timeline:0",
+                "kind": "reasoning",
+                "order": 0,
+                "content": "\nThe user said \"Привет\" (Hello in Russian). This is the START phase. According to the agent profile instruction, I need to call `startup_compare` with the session file from the mentioned.files.\n\nThe mentioned file is: `/session/r7/r7-word_smoketest.json`\n\nLet me call the `startup_compare` tool.\n"
+              },
+              {
+                "id": "D54ccX4FAyg5N60zgCRJ0:timeline:1",
+                "kind": "tool_group",
+                "order": 1,
+                "status": "started",
+                "tool_call_ids": [
+                  "call_function_jujoye983v7d_1"
+                ],
+                "tool_group_id": "D54ccX4FAyg5N60zgCRJ0:XdTS19ZU7miRQ9IpByzFd:tool-group:0"
+              }
+            ],
+            "response_timeline_last_seq": 7
+          }
+        }
+      ]
+    }
+  ],
+  "context_usage": {
+    "source": "history_load",
+    "approx_history_tokens": 4092,
+    "message_count": 4,
+    "fresh_history_tokens": 4092,
+    "fresh_message_count": 4,
+    "fresh_history_budget_tokens": 101238,
+    "compacted_summary_tokens": 0,
+    "compacted_summary_message_count": 0,
+    "history_token_limit": 126548,
+    "compaction_trigger_tokens": 101238,
+    "effective_limit_tokens": 126548,
+    "prompt_token_budget": 180784,
+    "response_token_limit": 8192,
+    "system_prompt_token_reserve": 0,
+    "tool_schema_token_reserve": 0,
+    "safety_token_reserve": 1024,
+    "fill_ratio": 0.04041960528655248,
+    "total_fill_ratio": 0.04041960528655248,
+    "resolved_model_id": "4ohPFvIN0OJ48pZUR2wFk",
+    "model_context_window_tokens": 190000,
+    "is_approximate": true
+  },
+  "pagination": {
+    "page": 1,
+    "size": 99999,
+    "total": 2
+  }
+}

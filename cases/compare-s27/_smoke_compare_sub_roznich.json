@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "agent_id": "s_eDSWr8EkRPfDsbgBJxa",
+  "session_id": "dAornySTLz0cFbxjLGuVm",
+  "elapsed_ms": 83256,
+  "steps": [
+    {
+      "turn": "start",
+      "done": true,
+      "waited_ms": 38127
+    },
+    {
+      "turn": "compare",
+      "done": true,
+      "waited_ms": 44674
+    }
+  ],
+  "checks": {
+    "compare_report": true,
+    "compare_two_bash": true,
+    "compare_no_diagnostic_spiral": true,
+    "compare_no_failure_ack": true
+  },
+  "compare_bash_commands": [
+    "head -c 1500000 \"/workspace/Templates/sub_roznich.md\"",
+    "head -c 2000000 \"/session/r7/r7-word_smoketest.json\""
+  ],
+  "content_preview": "\n\n## Результаты сравнения\n\n**Шаблон:** Сублицензионный договор (sub_roznich.md)  \n**Документ:** Договор поставки (r7-word_smoketest.json)\n\n### Резюме\n\n1. **Тип договора** — совершенно разные договоры: шаблон — сублицензионный договор на ПО (Р7-Офис), документ — договор поставки товаров.\n2. **Стороны** — шаблон: АО «Р7» (Правообладатель) → Лицензиат → Сублицензиат; документ: Поставщик и Покупатель.\n3. **Предмет** — шаблон: поставка экземпляров ПО + право использования по лицензии; документ: поста",
+  "tools": [
+    {
+      "name": "bash",
+      "command": "ls -la /workspace/Templates/"
+    },
+    {
+      "name": "bash",
+      "command": "head -c 1500000 \"/workspace/Templates/sub_roznich.md\""
+    },
+    {
+      "name": "bash",
+      "command": "head -c 2000000 \"/session/r7/r7-word_smoketest.json\""
+    }
+  ]
+}

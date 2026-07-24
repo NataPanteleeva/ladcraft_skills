@@ -12,7 +12,20 @@
 | 2. Чат | [docs/02-chat-rules.md](docs/02-chat-rules.md) | `src/main.ts`, `src/ui/` |
 | 3. Вставка | [docs/03-apply-rules.md](docs/03-apply-rules.md), [docs/04-skill-output-contract.md](docs/04-skill-output-contract.md) | `src/apply/`, `src/ui/message-actions.ts` |
 
-Обзор: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Для AI: [AGENTS.md](AGENTS.md)
+Обзор: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Для AI: [AGENTS.md](AGENTS.md) · API R7 Office: [knowledge-base/r7-api-handoff/](../../knowledge-base/r7-api-handoff/)
+
+## Варианты сборки (feature flags)
+
+Канонический плагин — **эта папка**. Бывшие форки (`ladcraft-r7`, `ladcraft-r7_btn`, `side/ladcraft-r7`) соответствуют build-вариантам:
+
+```bash
+npm run build              # btn_stream (SSE + кнопки) — default
+npm run build:btn          # poll + кнопки
+npm run build:base         # poll, без кнопок
+npm run build:side         # poll, side layout
+```
+
+Подробнее: [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md) · VFS migration: [docs/VFS-TO-DISK-REF-MIGRATION.md](docs/VFS-TO-DISK-REF-MIGRATION.md)
 
 ## Передача документа (блок 1)
 
@@ -57,7 +70,8 @@ npm run build
 - Во время стрима UI обновляет только текст assistant bubble.
 - После `message_done` выполняется один `GET /v1/agent/session/{id}/history` и финальный рендер (widgets/tool_calls/actionPlan).
 - Poll остается fallback-механизмом (`replay_reset`, сетевые обрывы, late-reply).
-- Переход на AG-UI ожидается отдельно; текущая реализация держит transport в `src/eai/sse.ts` как адаптер.
+- Transport adapter: `src/eai/transport.ts` (`SseHybridTransport` / `PollOnlyTransport`); UI stream logic — `src/eai/stream-orchestrator.ts`.
+- Переход на AG-UI: заглушка `src/eai/ag-ui-transport.ts`; factory переключится отдельно.
 
 ## localStorage
 

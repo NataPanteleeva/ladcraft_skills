@@ -1,7 +1,7 @@
 ---
 name: analytics_csv_select
 description: Аналитика продаж CSV на Р7 Диске с выбором исходного файла через поиск папки и последующей генерацией XLSX-отчёта.
-version: 3.0.1
+version: 8.9.0
 tags:
   - analytics
   - csv
@@ -31,10 +31,6 @@ mcp_spec:
             title: Пароль Р7-Диска
             format: string
             secret: true
-          ANALYTICS_REPORT_FOLDER_NAME:
-            title: Имя папки для поиска CSV
-            format: string
-            description: По умолчанию Таблицы для отчета.
       schemas:
         input:
           type: object
@@ -66,36 +62,20 @@ mcp_spec:
               type: boolean
             csv_name:
               type: string
+            csv_document_id:
+              oneOf:
+                - type: integer
+                - type: string
+            is_shared:
+              type: boolean
+            needs_personal_upload:
+              type: boolean
             document_id:
               oneOf:
                 - type: integer
                 - type: string
     - name: analytics_csv_generate_report
-      description: Скачивает CSV с Р7 Диск, анализирует продажи и загружает XLSX-отчёт в ту же папку.
-      environment:
-        user:
-          R7_DISK_BASE_URL:
-            title: Базовый URL Р7-Диска
-            format: string
-          R7_DISK_LOGIN:
-            title: Логин
-            format: string
-          R7_DISK_PASSWORD:
-            title: Пароль
-            format: string
-            secret: true
-          ANALYTICS_CSV_DIRECTORY_ID:
-            title: Fallback ID папки (для smoke)
-            format: number
-            description: Используется только если directory_id не передан в tool.
-          ANALYTICS_CSV_DEFAULT_INPUT_NAME:
-            title: Fallback имя CSV
-            format: string
-            description: Используется только если csv_name не передан в tool.
-          ANALYTICS_CSV_DEFAULT_OUTPUT_NAME:
-            title: Имя XLSX-отчёта по умолчанию
-            format: string
-            description: По умолчанию отчет_продаж.xlsx.
+      description: Скачивает CSV с Р7 Диск по document_id или имени, анализирует продажи и загружает XLSX-отчёт.
       schemas:
         input:
           type: object
@@ -105,20 +85,26 @@ mcp_spec:
               oneOf:
                 - type: integer
                 - type: string
-              description: ID папки Р7 Диск.
+              description: ID папки для сохранения отчёта (если доступна запись).
             csv_name:
               type: string
+            csv_document_id:
+              oneOf:
+                - type: integer
+                - type: string
+            is_shared:
+              type: boolean
+            needs_personal_upload:
+              type: boolean
+            upload_to_personal:
+              type: boolean
+            output_directory_id:
+              oneOf:
+                - type: integer
+                - type: string
             output_name:
               type: string
             conflict_policy:
-              type: string
-            auth_token:
-              type: string
-            base_url:
-              type: string
-            login:
-              type: string
-            password:
               type: string
         output:
           type: object
@@ -132,18 +118,30 @@ mcp_spec:
 
 Навык состоит из двух инструментов:
 
-1. `analytics_list_source_files` — находит папку `Таблицы для отчета`, показывает CSV для выбора, а если папка не найдена, возвращает список папок под `Мои документы`. С `use_current_document: true` проверяет текущий документ из контекста R7.
-2. `analytics_csv_generate_report` — формирует XLSX `отчет_продаж.xlsx` из выбранного CSV в той же папке.
+1. `analytics_list_source_files` — document-id-first для текущего документа; для других файлов находит папку `Таблицы для отчета` или список папок под `Мои документы`.
+2. `analytics_csv_generate_report` — скачивает CSV по `csv_document_id` (приоритет) или `GetIdByName`, формирует XLSX; для расшаренных CSV сохраняет отчёт в «Мои документы».
 
 ## Рабочий сценарий
 
-- Старт: текущий документ (`use_current_document`) или поиск папки с CSV.
-- Если текущий документ — CSV, сразу вызывай `analytics_csv_generate_report`.
-- Если текущий документ не CSV — переходи к поиску других файлов.
-- После выбора CSV из списка вызывай `analytics_csv_generate_report` один раз.
+- **Старт (0 tools):** агент приветствует и задаёт один вопрос с двумя вариантами (отчёт по текущему документу / другие файлы). Контекст R7 (`document_id`, `file_name`) — не считается выбором пользователя.
+- **После выбора «данный документ»:** `analytics_list_source_files` с `use_current_document: true` (без озвучивания «проверки» в чате).
+- `current_file_is_csv: true` → `analytics_csv_generate_report` (без доп. подтверждения).
+- `current_file_is_csv: false` → поиск других файлов.
+- **После выбора «другие файлы»:** list по папке / списку, затем report по явной команде пользователя.
 - После успешного отчёта не повторяй tool без нового запроса пользователя.
 
 ## Важно для агента
 
 - Не проси пользователя вручную вводить `directory_id` на старте.
 - Не выдумывай папки/файлы: используй только `files` или `folders` из ответа list-tool.
+- **Не спрашивай** URL/логин/пароль Р7 Диска — `R7_DISK_*` берутся из настроек установки навыка автоматически. Вызывай tools без полей `login`/`password`/`base_url`/`auth_token`.
+
+## Подготовка (install-time, не в чате)
+
+| Переменная | Обязательность | Пример |
+|---|---|---|
+| `R7_DISK_BASE_URL` | да | `https://cddisk.gptz.lad-soft.ru` |
+| `R7_DISK_LOGIN` | да | логин |
+| `R7_DISK_PASSWORD` | да | пароль |
+
+Токен кэшируется в `skillStorage` между вызовами.

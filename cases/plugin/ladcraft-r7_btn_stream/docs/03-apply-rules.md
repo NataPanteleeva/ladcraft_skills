@@ -13,7 +13,19 @@
 
 - Upload документа в VFS (блок 1)
 - Отправка сообщений (блок 2)
-- Авто-применение `r7.task` (task-runner) — отдельный шаг
+
+## Авто-применение `r7.task` (task-runner)
+
+Реализовано в `src/apply/task-runner.ts`, вызывается из `main.ts` после ответа ассистента и при history-sync.
+
+| `type` | Авто-применение |
+|--------|-----------------|
+| `search_replace`, `add_comment`, `paste`, `paste_text`, `cell_paste`, `remove_selection`, `replace_selection` | **да** — в открытый документ R7 |
+| `deliver_file`, `deliver_inline`, `share_link`, `open_file` | **нет** — intent-gated UI (кнопки вставки/скачивания) |
+
+Дедупликация: `sessionStorage` ключ `ladcraft_r7_applied_tasks:{sessionId}` по fingerprint сообщения + задачи.
+
+Статусная строка: «Применено изменений в документе: N».
 
 ## Контракт `MessageActionPlan`
 
@@ -81,6 +93,7 @@ interface MessageActionPlan {
 | `src/apply/compare-report.ts` | CompareReport JSON |
 | `src/apply/content-extract.ts` | эвристики отчёта из чата |
 | `src/apply/insert.ts`, `download.ts` | исполнители |
+| `src/apply/task-runner.ts` | авто-применение r7.task в редактор |
 | `src/ui/message-actions.ts` | UI кнопок |
 | `src/ui/chat-history.ts` | вызов резолвера при маппинге history |
 

@@ -11,6 +11,7 @@
 |----------|------------|
 | [`architecture-decisions.md`](architecture-decisions.md) | ADR: почему bash-first, что пробовали и отклонили |
 | [`cases/doc_compare/docs/r7-plugin-data-contract.md`](../../doc_compare/docs/r7-plugin-data-contract.md) | Upload snapshot, `mentioned.files` |
+| `Skill Output Contract for ladcraft-r7 Report Actions` (внутри `r7-plugin-data-contract.md`) | Контракт для блоков `вставить/скачать`, `r7.task`, DOCX deliver |
 | [`agent/instruction`](../agent/instruction) | Живая instruction prod-агента |
 | [`approved-variants/r7-document-compare-templates-compare/`](../../approved-variants/r7-document-compare-templates-compare/) | **Снимок** рабочего варианта `templates+compare` |
 | [`skills/r7-compare-toolkit/SKILL.md`](../skills/r7-compare-toolkit/SKILL.md) | Промпт навыка (политика отчёта) |
@@ -74,6 +75,12 @@ head -c 200000 "<session_file из mentioned.files>"
 ```
 
 CompareReport: `schema: doc-compare/v1`, `chatMarkdown`, `sections` — все расхождения.
+
+В конце ответа добавь явную подсказку пользователю:
+- `Чтобы вставить отчёт, напишите: вставить`
+- `Чтобы скачать отчёт, напишите: скачать (или скачать docx)`
+
+Это обязательная часть UX-контракта action-блоков плагина (intent-gated).
 
 **Запрет:** `load_compare_pair`, `prepare_compare`, `read_r7_snapshot_text`, `python3`, `cat | python`, повторные read.
 

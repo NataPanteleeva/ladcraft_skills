@@ -92,6 +92,8 @@ r7_render_and_deliver_docx({ "report": <объект CompareReport> })
 `report` — **JSON-объект**, не `JSON.stringify`.
 
 **Ответ tool:** `r7_task_block` с `deliver_file` — **дословно** в сообщение пользователю.
+После этого добавь явную подсказку:
+- `Чтобы скачать отчёт, напишите: скачать (или скачать docx)`
 
 Не вызывай `r7_render_docx` + `r7_deliver_docx` / `r7-export-compare` — это устаревшая двухшаговая схема.
 

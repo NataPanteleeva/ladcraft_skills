@@ -1,0 +1,7 @@
+﻿{
+    "agent":  "cases/r7-compare-docs",
+    "plugin":  "cases/plugin/ladcraft-r7",
+    "prodAgentId":  "4_FSw4Sf7y71TS_qKpr31",
+    "note":  "Pre VFS-removal backup; local sources only",
+    "backupAt":  "2026-06-29T21-38-53"
+}

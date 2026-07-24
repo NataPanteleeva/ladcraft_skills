@@ -20,6 +20,8 @@
 
 | id | Теги | Описание |
 |----|------|----------|
+| [`compare-s27-work-18-30-29-06`](compare-s27-work-18-30-29-06/) | `Work_18.30_29.06`, `compare-s27` | Сравнение 27: markdown-first, 4 helper skills, enhanced smoke |
+| [`good_compare`](good_compare/) | `good_compare`, `templates+compare` | R7 compare: r7-compare-toolkit + раздельные агенты compare-r7 / compare-s27 |
 | [`r7-document-compare-fast-templates`](r7-document-compare-fast-templates/) | `fast-templates`, `r7`, `compare` | R7 compare: bash-список шаблонов на START |
 
 ## Связь с каноном

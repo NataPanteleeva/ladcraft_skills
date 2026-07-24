@@ -1,0 +1,23 @@
+{
+  "r1": {
+    "template": "dogovor_postavki.md",
+    "session_id": "pmeJZafZwL2Wz6tDBF72E",
+    "has_report": false,
+    "has_rasx": false,
+    "has_hotite": false,
+    "relist_no_report": false,
+    "max_tools_on_msg": 2,
+    "last_head": "\n\nНе удалось прочитать snapshot; перезапустите сравнение из R7."
+  },
+  "r2": {
+    "template": "sub_roznich.md",
+    "session_id": "JRI3xHYs9vzxlR8ahdZ5T",
+    "has_report": false,
+    "has_rasx": false,
+    "has_hotite": false,
+    "relist_no_report": false,
+    "max_tools_on_msg": 2,
+    "last_head": "\n\nНе удалось прочитать snapshot; перезапустите сравнение из R7."
+  },
+  "instruction_lines": 51
+}

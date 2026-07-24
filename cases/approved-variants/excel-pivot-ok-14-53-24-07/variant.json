@@ -1,0 +1,15 @@
+{
+  "id": "excel-pivot-ok-14-53-24-07",
+  "title": "Excel Pivot + ladcraft-r7_new — ОК 14:53 24.07",
+  "status": "approved",
+  "verifiedAt": "2026-07-24",
+  "verifiedLabel": "ОК на 14:53 24.07",
+  "tags": ["excel-pivot", "ladcraft-r7_new", "0.6.62-sheet-callback", "ok-14-53-24-07", "cell"],
+  "sourceCase": "cases/excel_pivot_report",
+  "sourceCases": ["cases/excel_pivot_report", "cases/plugin/ladcraft-r7_new"],
+  "path": "excel-pivot-ok-14-53-24-07",
+  "prodAgentId": "UsL7iqdQLBtYpmP0s7dWF",
+  "skillBindings": ["excel_pivot_toolkit"],
+  "pluginVersion": "0.6.62-sheet-callback",
+  "summary": "ОК 14:53 24.07: плагин 0.6.62-sheet-callback (sheet unlock + 12s watchdog) + Excel Pivot Report agent/skill (clarify-first, multi-turn)."
+}

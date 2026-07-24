@@ -1,0 +1,19 @@
+{
+  "agentId": "UsL7iqdQLBtYpmP0s7dWF",
+  "title": "Excel Pivot Report",
+  "instructionFile": "instruction.md",
+  "label": "ОК на 14:53 24.07",
+  "skillBindings": {
+    "excel_pivot_toolkit": {
+      "catalogId": "dCBtc5mdPQV846hIqW0Hp",
+      "skillPath": "skills/excel_pivot_toolkit"
+    }
+  },
+  "plugin": {
+    "name": "ladcraft-r7_new",
+    "version": "0.6.62-sheet-callback",
+    "path": "plugin/ladcraft-r7_new"
+  },
+  "snapshottedAt": "2026-07-24T14:53:00+03:00",
+  "sourceCases": ["cases/excel_pivot_report", "cases/plugin/ladcraft-r7_new"]
+}

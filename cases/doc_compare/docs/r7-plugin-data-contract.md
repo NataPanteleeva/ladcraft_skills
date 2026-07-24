@@ -226,4 +226,133 @@ node .cursor/skills/ladcraft-agent-drive/scripts/lc_agent_drive.js \
 
 ---
 
-*Обновлено: 2026-06-28 — список шаблонов на START: bash `ls` (канон compare-r7); чтение B через skill.*
+## Skill Output Contract for ladcraft-r7 Report Actions
+
+Цель: skill должен вернуть результат так, чтобы плагин корректно показывал блоки
+**«Вставить в документ»** и **«Скачать»**, и не показывал кнопки в неподходящих сообщениях.
+
+### 1) Обязательный UX-контракт (intent-gated)
+
+Кнопки действий появляются только после явного сообщения пользователя:
+
+- `вставить` / `insert` -> insert-блок
+- `скачать` / `download` / `.md` / `.docx` -> download-блок
+
+После финального отчета skill обязан добавить подсказку:
+
+- `Чтобы вставить отчет в документ, напишите: вставить`
+- `Чтобы скачать отчет, напишите: скачать`
+- `Чтобы скачать Word, напишите: скачать docx`
+
+Без этой подсказки кнопки могут не появиться (это ожидаемо для текущего UI-потока).
+
+#### Intent-gated closing (skill/agent)
+
+Кнопки **Insert** / **Download** в плагине ladcraft-r7 появляются только после того, как **пользователь** напишет intent-слово (`вставить`, `скачать`, `скачать docx`). Подробности UX-потока: [`plugin/ladcraft-r7/docs/03-apply-rules.md`](../../../plugin/ladcraft-r7/docs/03-apply-rules.md).
+
+| Да (обязательно в closing) | Нет (запрещено) |
+|----------------------------|-----------------|
+| «напишите: вставить» | «Хотите вставить…?» |
+| «напишите: скачать» | «Вставить или скачать?» |
+| «напишите: скачать docx» | Любой вопрос вместо императива |
+
+Вопрос агента **не равен** intent — пользователь видит обещание выбора, но кнопок нет. Канон фраз: `cases/compare-r7_v2/skills/r7-document-compare/SKILL.md` § Intent-gated.
+
+#### Slim CompareReport + persist (compare-r7 v2 monolith, ADR-007/008)
+
+- В `r7.task` JSON **не дублировать** `chatMarkdown` — только `schema`, `meta`, `sections`.
+- Видимый чат — отдельно (резюме + таблица); insert/docx: `compareReportToMarkdown(sections)` в плагине.
+- Агент после сравнения вызывает `r7_persist_compare_report` → `/session/compare/latest.json` для EXPORT после compaction.
+
+### 2) Видимая часть assistant text
+
+Skill возвращает финальный markdown-отчет в обычном тексте ответа:
+
+- структурированные секции (summary, таблицы, итог)
+- человекочитаемый вывод
+- без служебного JSON/tool trace в display
+
+Рекомендуемые маркеры отчета:
+
+- `Результаты сравнения`
+- `Сравнение завершено`
+- `Расхождений: <N>`
+- markdown-таблица вида `| пункт | шаблон | документ |`
+
+Нельзя показывать в видимой части:
+
+- chain-of-thought/служебные размышления
+- сырой tool payload
+- технические JSON-блоки, не предназначенные пользователю
+
+### 3) Машиночитаемая часть (рекомендуется): r7.task
+
+Для надежной доставки действия добавляй `r7.task`:
+
+```r7.task
+[
+  {
+    "type": "deliver_inline",
+    "data": {
+      "fileName": "report.md",
+      "mimeType": "text/markdown",
+      "content": "# Результаты сравнения\n...",
+      "actions": ["download", "paste_text"]
+    }
+  }
+]
+```
+
+Поддерживаемые export-типы задач:
+
+- `deliver_inline`
+- `deliver_file`
+- `share_link` (опционально)
+
+### 4) Контракт для DOCX
+
+Предпочтительный путь:
+
+```r7.task
+[
+  {
+    "type": "deliver_file",
+    "data": {
+      "fileId": "<vfs_file_id>",
+      "fileName": "report.docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "actions": ["download"]
+    }
+  }
+]
+```
+
+Fallback, если VFS upload недоступен:
+
+- inline `content_base64` в tool result
+- `fileName` с расширением `.docx`
+- docx `mimeType`
+
+### 5) Когда кнопки не должны появляться
+
+Это нормальное поведение, если сообщение:
+
+- виджет / ожидание ввода
+- шаблон-пикер
+- промежуточный статус, не финальный результат
+- не было последующего intent-сообщения пользователя (`вставить`/`скачать`)
+
+### 6) Definition of Done для skill-команды
+
+- [ ] Финальный отчет возвращается как user-facing markdown
+- [ ] В конце ответа есть явная подсказка `вставить` / `скачать`
+- [ ] Для docx используется `deliver_file` (или base64 fallback)
+- [ ] В display нет служебных JSON/tool traces
+- [ ] Проверен сценарий:
+  - отчет
+  - пользователь пишет `вставить` -> появляются insert-кнопки
+  - пользователь пишет `скачать` / `скачать docx` -> появляются download-кнопки
+
+---
+
+*Обновлено: 2026-06-29 — добавлен Skill Output Contract для action-блоков ladcraft-r7; сохранен канон START: bash `ls`.*

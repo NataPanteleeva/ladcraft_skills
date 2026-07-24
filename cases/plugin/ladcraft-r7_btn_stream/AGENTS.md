@@ -16,7 +16,9 @@
 
 1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — три блока
 
-2. Правила блока, который меняешь:
+2. **API R7 Office (общий справочник):** [`cases/knowledge-base/r7-api-handoff/`](../../knowledge-base/r7-api-handoff/) — для блока 3 начни с [`07-plugin-integration.md`](../../knowledge-base/r7-api-handoff/07-plugin-integration.md); для Word/Cell — `02-documents-word.md` / `03-tables-cell.md`
+
+3. Правила блока, который меняешь:
 
    - Передача данных → [docs/01-transfer-rules.md](docs/01-transfer-rules.md)
 

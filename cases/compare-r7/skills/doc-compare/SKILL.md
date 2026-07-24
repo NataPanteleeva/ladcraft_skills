@@ -62,9 +62,14 @@ Path B — только из `startup_compare` / `mentioned.files[0].file_name`.
 [{"type":"deliver_inline","data":{"fileName":"compare-report.json","mimeType":"application/json","encoding":"utf8","content":"<JSON.stringify(CompareReport) одной строкой>","actions":[]}}]
 ```
 
-### Что дальше?
+### Что дальше? (обязательная UX-подсказка)
 
-«Напишите **вставить** — кнопки вставки; **скачать** — .md/.html; **скачать docx** / **сохрани в Word** — Word через агента».
+Добавь в конец `content` буквальные фразы:
+
+- `Чтобы вставить отчёт в документ, напишите: вставить`
+- `Чтобы скачать отчёт, напишите: скачать (или скачать docx)`
+
+Это обязательная часть intent-gated контракта плагина ladcraft-r7.
 
 ## Не делай
 
@@ -74,3 +79,4 @@ Path B — только из `startup_compare` / `mentioned.files[0].file_name`.
 | > 15 строк таблицы в чате | полный список в CompareReport.sections |
 | Сдвиги нумерации в отчёт | игнорировать |
 | Длинный reasoning-список до ответа | сразу финальный content |
+| Служебные JSON/tool trace в display | показывать только user-facing markdown |

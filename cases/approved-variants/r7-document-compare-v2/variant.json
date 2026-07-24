@@ -1,0 +1,68 @@
+{
+  "id": "r7-document-compare-v2",
+  "title": "R7: сравнение документов v2 — templates+compare + docx",
+  "status": "approved",
+  "verifiedAt": "2026-06-29",
+  "tags": ["compare-r7-v2", "bash-ls", "bash-head", "r7", "ladcraft-r7"],
+  "sourceCase": "cases/compare-r7_v2",
+  "sourceDocs": [
+    "cases/compare-r7/docs/architecture-decisions.md",
+    "cases/compare-r7_v2/README.md"
+  ],
+  "prod": {
+    "agentId": "tc04UdOHJpv0YYKJjLbF8",
+    "agentTitle": "R7: сравнение документов v2",
+    "skills": [
+      {
+        "slug": "r7-compare-toolkit-v2",
+        "catalogId": "TiJiaM2vsVqmvqTAofwZA",
+        "installedId": "tbHDSmonWkwAFVfDpPxRO",
+        "version": "3.1.0",
+        "tools": []
+      },
+      {
+        "slug": "doc-compare-v2",
+        "catalogId": "WPzlNroFg9z16bwBAnoBL",
+        "installedId": "BhJuLUaw_BLroInHKNehG",
+        "version": "2.1.0",
+        "tools": []
+      },
+      {
+        "slug": "r7-docx-render-v2",
+        "catalogId": "8QKNjjqbYTmK212Za_pu6",
+        "installedId": "sLLRfXuatNFx6vSw4QX8b",
+        "version": "2.1.0",
+        "tools": ["r7_render_and_deliver_docx", "r7_render_docx"]
+      }
+    ]
+  },
+  "highlights": {
+    "start": "bash ls Templates + activate toolkit-v2 (2 tool); B не читать; 0 tool после batch",
+    "compare": "2× bash head A+B; LLM semantic; r7.task CompareReport",
+    "export": "r7_render_and_deliver_docx",
+    "rejected": [
+      "peek B на START",
+      "startup_compare",
+      "read_r7_snapshot_text",
+      "compare_documents on prod",
+      "python3 pipe on START"
+    ]
+  },
+  "referenceSessions": [
+    {
+      "note": "Список шаблонов — приём из «Сравнение 27»",
+      "agentId": "s_eDSWr8EkRPfDsbgBJxa",
+      "sessionId": "sSq4sMISgdtM3RwQW9Hrm"
+    },
+    {
+      "note": "Антипример peek B на START — ложный snapshot не найден",
+      "agentId": "tc04UdOHJpv0YYKJjLbF8",
+      "sessionId": "tySulecO0Dbu88IeYrssZ"
+    }
+  ],
+  "relatedAgents": {
+    "compareR7v1": "wvccZ9WaZMDdCxfTyDGhh",
+    "note": "v2 — рекомендуемый для новых привязок R7"
+  },
+  "snapshottedAt": "2026-06-29T12:00:00.000Z"
+}

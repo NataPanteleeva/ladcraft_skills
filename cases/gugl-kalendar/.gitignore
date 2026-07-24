@@ -1,0 +1,13 @@
+.from-server.json
+.remote-cache/
+.skill-backups/
+.build/
+node_modules/
+dist/
+build/
+.cache/
+.tmp/
+.DS_Store
+.env
+.env.local
+.ladcraft/

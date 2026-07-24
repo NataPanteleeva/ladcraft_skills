@@ -30,14 +30,6 @@ schemas:
       file_name:
         type: string
         description: Имя текущего документа из контекста R7.
-      auth_token:
-        type: string
-      base_url:
-        type: string
-      login:
-        type: string
-      password:
-        type: string
   output:
     type: object
     additionalProperties: true
@@ -58,6 +50,17 @@ schemas:
       csv_name:
         type: string
         description: Имя CSV при source=current_document.
+      csv_document_id:
+        oneOf:
+          - type: integer
+          - type: string
+        description: ID CSV на диске для прямого скачивания (document-id-first).
+      is_shared:
+        type: boolean
+        description: true если документ из «Доступно для меня».
+      needs_personal_upload:
+        type: boolean
+        description: true если отчёт нужно сохранить в «Мои документы».
       document_id:
         type: integer
       file_name:
@@ -101,7 +104,4 @@ environment:
       title: Пароль Р7-Диска
       format: string
       secret: true
-    ANALYTICS_REPORT_FOLDER_NAME:
-      title: Имя папки для поиска CSV
-      format: string
 ---

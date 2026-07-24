@@ -1,0 +1,36 @@
+{
+  "agentId": "s_eDSWr8EkRPfDsbgBJxa",
+  "title": "Сравнение 27",
+  "instructionFile": "instruction",
+  "label": "Work_18.30_29.06",
+  "allowedAppIds": [
+    "0HZzMZTKFcqVPD7xh85f3",
+    "8AwLcWSN1SGo_U_ZKbIRy",
+    "hOtJN6c7YtL8GjP8hWCFL",
+    "Wjh8b2THRGyflAIoKY8BH"
+  ],
+  "skillBindings": {
+    "r7-report-actions-s27": {
+      "catalogId": "VXJisfG60TRXVBceXr0it",
+      "installedId": "0HZzMZTKFcqVPD7xh85f3",
+      "skillPath": "skills/r7-report-actions-s27"
+    },
+    "r7-export-compare-s27": {
+      "catalogId": "sBsa3PBF1N_Hq3IWZUFug",
+      "installedId": "8AwLcWSN1SGo_U_ZKbIRy",
+      "skillPath": "skills/r7-export-compare-s27"
+    },
+    "r7-save-compare-disk-s27": {
+      "catalogId": "xb_Sj95uLF1KvKPSDBA7y",
+      "installedId": "hOtJN6c7YtL8GjP8hWCFL",
+      "skillPath": "skills/r7-save-compare-disk-s27"
+    },
+    "r7-docx-render": {
+      "catalogId": "UHOuXEcDX0QYUuEXSuS8T",
+      "installedId": "Wjh8b2THRGyflAIoKY8BH",
+      "skillPath": "skills/r7-docx-render"
+    }
+  },
+  "snapshottedAt": "2026-06-29T18:30:00+03:00",
+  "sourceCase": "cases/compare-s27"
+}

@@ -118,6 +118,8 @@ Compare-ход определяется через `resolveTemplateSelection` (`
 
 Рабочий endpoint на prod для плагина: `GET /v1/agent/sse/{session_id}` (`Authorization: Bearer`, `Accept: text/event-stream`).
 
+Transport adapter: [`src/eai/transport.ts`](../src/eai/transport.ts) — `createChatTransport()` выбирает `SseHybridTransport` или `PollOnlyTransport` по feature flag `sseStreaming`. Низкоуровневый SSE parser: [`src/eai/sse.ts`](../src/eai/sse.ts). UI orchestration: [`src/eai/stream-orchestrator.ts`](../src/eai/stream-orchestrator.ts). AG-UI заглушка: [`src/eai/ag-ui-transport.ts`](../src/eai/ag-ui-transport.ts).
+
 `/v1/agent-api/sessions/{session_id}/events` в текущем окружении возвращал `403`, поэтому используется как primary-кандидат в коде с автопереключением на `/v1/agent/sse/{session_id}`.
 
 Fallback-правила:

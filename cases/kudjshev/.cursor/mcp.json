@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "skilled-agent": {
+      "url": "https://gptzator-v2-prototype.sgrzlk.easypanel.host/sse?token=sk_a99296abc976f0cc1653571b7c078e836bc71a556c55a2b5f2a7a5a197f5e498&mode=readonly",
+      "disabled": false
+    }
+  }
+}

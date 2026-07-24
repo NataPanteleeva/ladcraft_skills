@@ -1,0 +1,16 @@
+{
+  "id": "good_compare",
+  "title": "R7 compare — good_compare (разделённые агенты + r7-compare-toolkit)",
+  "status": "approved",
+  "verifiedAt": "2026-06-29",
+  "tags": ["good_compare", "templates+compare", "r7", "compare", "ladcraft-r7", "bash-head"],
+  "sourceCase": "cases/compare-r7",
+  "sourceCases": ["cases/compare-r7", "cases/compare-s27"],
+  "path": "good_compare",
+  "prodAgentIds": {
+    "compareR7": "wvccZ9WaZMDdCxfTyDGhh",
+    "compareS27": "s_eDSWr8EkRPfDsbgBJxa"
+  },
+  "skillBindings": ["r7-compare-toolkit"],
+  "summary": "Снимок после отката смешения агентов: compare-r7 (канон wvcc) + compare-s27 (простой промпт) + r7-compare-toolkit instruction-only (templates+compare, r7.task)."
+}
