@@ -1,0 +1,33 @@
+{
+  "compareR7": {
+    "agentId": "wvccZ9WaZMDdCxfTyDGhh",
+    "title": "R7: сравнение документов",
+    "primaryWorkspaceId": "tyVwdNu1mcvzwo0uiwZLv",
+    "instructionFile": "instruction-compare-r7",
+    "skillBindings": {
+      "r7-compare-toolkit": {
+        "catalogId": "TAJgJW37ybWIP5w7lmGzv",
+        "installedId": "rMT5ftorab_GDqYRyxO5M",
+        "version": "11.0.0",
+        "tools": []
+      }
+    }
+  },
+  "compareS27": {
+    "agentId": "s_eDSWr8EkRPfDsbgBJxa",
+    "title": "Сравнение 27",
+    "primaryWorkspaceId": "IVtOGFAB4kAXHPaJAOCdl",
+    "instructionFile": "instruction-compare-s27",
+    "skillBindings": {}
+  },
+  "skill": {
+    "slug": "r7-compare-toolkit",
+    "catalogId": "TAJgJW37ybWIP5w7lmGzv",
+    "repoSkillPath": "skills/r7-compare-toolkit/SKILL.md",
+    "payloadPath": "payloads/r7-compare-toolkit.json",
+    "localVersion": "4.0.0",
+    "prodVersionAtSnapshot": "11.0.0"
+  },
+  "snapshottedAt": "2026-06-29T12:00:00.000Z",
+  "sourceCases": ["cases/compare-r7", "cases/compare-s27"]
+}

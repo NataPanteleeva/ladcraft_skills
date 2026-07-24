@@ -1,0 +1,16 @@
+{
+  "skill": "r7-compare-toolkit-v2",
+  "title": "r7-compare-toolkit-v2",
+  "name": "r7-compare-toolkit-v2",
+  "description": "compare-r7 v2: bash ls + peek B на START; 2× bash head на COMPARE; LLM + r7.task. Instruction-only — skill tools не вызывать на prod.",
+  "detailed_description": "Политика compare-r7 **v2** (instruction-only). Скрипты в `scripts/` — для локальных тестов, **не** вызывать на prod.\r\n\r\nКанон: [`cases/compare-r7/docs/architecture-decisions.md`](../../compare-r7/docs/architecture-decisions.md) ADR-001, ADR-005.\r\n\r\n## START\r\n\r\n**3 tool параллельно** (иначе R7 обрывает run):\r\n\r\n1. `bash` → `ls -la /workspace/Templates/`\r\n2. `bash` → `head -c 8000 \"<mentioned.files[0].file_name>\"` — peek snapshot B\r\n3. `skills activate r7-compare-toolkit-v2`\r\n\r\nТаблица: `| № | Название шаблона | Размер |`. Сохрани `session_file`.\r\n\r\nPeek B: `\"r7-snapshot/v1\"` в выводе → документ готов; иначе — snapshot не найден, не переходи к COMPARE.\r\n\r\n**Запрет на START:** `startup_compare`; `read_r7_snapshot_text`; python; pipe; COMPARE без выбора шаблона.\r\n\r\n## COMPARE\r\n\r\nШаблон **уже выбран** — **не** список шаблонов, **не** `ls` Templates.\r\n\r\n**1 batch — 2 bash параллельно**, затем **0 tools** — LLM-отчёт:\r\n\r\n```\r\nhead -c 150000 \"/workspace/Templates/{шаблон}.md\"\r\nhead -c 200000 \"<session_file>\"\r\n```\r\n\r\nИз B — **`body.text`** (`r7-snapshot/v1`).\r\n\r\nСмысл сравнения — как **doc-compare-v2**. Игнорируй сдвиги нумерации и колонку «наличие». Типы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n**Выход:** резюме + до **10** критичных в таблице + «**Расхождений: N**» + `r7.task`:\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<CompareReport одной строкой>\",\"actions\":[]}}]\r\n```\r\n\r\nCompareReport: `schema: doc-compare/v1`, `sections` — все расхождения.\r\n\r\n**Запрет:** `load_compare_pair`; `prepare_compare`; `read_r7_snapshot_text`; `compare_documents`; python3; pipe.\r\n\r\n## EXPORT\r\n\r\n`skills activate r7-docx-render-v2` → `r7_render_and_deliver_docx({ report })`.",
+  "tags": [
+    "document-compare",
+    "r7",
+    "bash-head"
+  ],
+  "category": "productivity",
+  "icon": "document",
+  "version": "3.0.0",
+  "tools": []
+}

@@ -21,5 +21,13 @@ export {
 export { insertContent } from "./insert";
 export { downloadMarkdown, downloadAsWordHtml, downloadDocx, isDocxDownloadSource, suggestBaseName } from "./download";
 export { withAction } from "./editor-methods";
+export {
+  applyEditorTasks,
+  collectPendingEditorTasks,
+  EDITOR_AUTO_APPLY_TYPES,
+  filterEditorApplyTasks,
+  taskApplyKey,
+  type EditorTaskApplyResult,
+} from "./task-runner";
 export type { DeliverableCard } from "./deliverable";
 export { compareReportToMarkdown, type CompareReport } from "./compare-report";

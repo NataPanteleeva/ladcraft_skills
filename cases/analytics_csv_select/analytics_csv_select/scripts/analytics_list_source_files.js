@@ -15,7 +15,7 @@ async function handler(state, params) {
 		raw.use_current_document === 1 ||
 		raw.use_current_document === '1';
 
-	const auth = await ensureDiskAuth(state, raw);
+	const auth = await ensureDiskAuth(state, raw, { deferMyDocuments: useCurrentDocument });
 	if (!auth.ok) {
 		return {
 			ok: false,
@@ -29,7 +29,8 @@ async function handler(state, params) {
 			auth,
 			raw.document_id,
 			raw.file_name,
-			fileExtension
+			fileExtension,
+			folderName
 		);
 	}
 
@@ -60,7 +61,27 @@ async function handler(state, params) {
 			4
 		);
 		if (directoryId == null) {
-			folderFound = false;
+			const scanned = await discoverReportFolderByScan(
+				auth.baseUrl,
+				auth.authToken,
+				folderName,
+				REPORT_FOLDER_SCAN_MAX_ID
+			);
+			if (scanned != null && scanned.directory_id != null) {
+				directoryId = scanned.directory_id;
+				source = scanned.source || 'report_folder_name_scan';
+				if (scanned.my_documents_directory_id != null) {
+					auth.myDocumentsDirectoryId = scanned.my_documents_directory_id;
+					if (auth.skillStorage) {
+						auth.skillStorage.set(
+							STORAGE_KEY_MY_DOCS,
+							String(scanned.my_documents_directory_id)
+						);
+					}
+				}
+			} else {
+				folderFound = false;
+			}
 		}
 	}
 

@@ -12,24 +12,35 @@ schemas:
         oneOf:
           - type: integer
           - type: string
-        description: ID папки Р7 Диск с CSV и для сохранения отчёта.
+        description: ID папки Р7 Диск с CSV и для сохранения отчёта (если доступна запись).
       csv_name:
         type: string
         description: Имя CSV-файла.
+      csv_document_id:
+        oneOf:
+          - type: integer
+          - type: string
+        description: ID CSV для скачивания через Documents/Download (приоритет над GetIdByName).
+      is_shared:
+        type: boolean
+        description: Исходный CSV расшарен — отчёт сохраняется в «Мои документы».
+      needs_personal_upload:
+        type: boolean
+        description: Сохранить отчёт в «Мои документы» вместо папки CSV.
+      upload_to_personal:
+        type: boolean
+        description: Синоним needs_personal_upload.
+      output_directory_id:
+        oneOf:
+          - type: integer
+          - type: string
+        description: Явный ID папки для сохранения отчёта (override personal root).
       output_name:
         type: string
         description: Имя XLSX-отчёта. По умолчанию отчет_продаж.xlsx.
       conflict_policy:
         type: string
         description: overwrite | suffix | error. По умолчанию overwrite.
-      auth_token:
-        type: string
-      base_url:
-        type: string
-      login:
-        type: string
-      password:
-        type: string
   output:
     type: object
     additionalProperties: true
@@ -76,25 +87,4 @@ resources:
       - cddisk.gptz.lad-soft.ru
       - cddisk.stand.lad-soft.ru
       - cddisk.r7o.ro
-environment:
-  user:
-    R7_DISK_BASE_URL:
-      title: Базовый URL Р7-Диска
-      format: string
-    R7_DISK_LOGIN:
-      title: Логин Р7-Диска
-      format: string
-    R7_DISK_PASSWORD:
-      title: Пароль Р7-Диска
-      format: string
-      secret: true
-    ANALYTICS_CSV_DIRECTORY_ID:
-      title: Fallback ID папки (для smoke)
-      format: number
-    ANALYTICS_CSV_DEFAULT_INPUT_NAME:
-      title: Fallback имя CSV
-      format: string
-    ANALYTICS_CSV_DEFAULT_OUTPUT_NAME:
-      title: Имя XLSX-отчёта по умолчанию
-      format: string
 ---

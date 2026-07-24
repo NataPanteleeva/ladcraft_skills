@@ -39,6 +39,7 @@ const PARAMETER_BLOCK_RE = /<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi;
 const GENERIC_TOOL_CALL_BLOCK_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call>/gi;
 const MINIMAX_TOOL_CALL_OPEN_RE = /<minimax:tool_call\b[^>]*>/gi;
 const MINIMAX_TOOL_CALL_CLOSE_RE = /<\/minimax:tool_call>/gi;
+const END_TURN_RE = /<\/?end_turn>/gi;
 
 /** Remove provider tool-call XML leaked into assistant text (MiniMax invoke, etc.). */
 export function stripAgentServiceMarkup(text: string): string {
@@ -48,6 +49,7 @@ export function stripAgentServiceMarkup(text: string): string {
   out = out.replace(GENERIC_TOOL_CALL_BLOCK_RE, "");
   out = out.replace(MINIMAX_TOOL_CALL_OPEN_RE, "");
   out = out.replace(MINIMAX_TOOL_CALL_CLOSE_RE, "");
+  out = out.replace(END_TURN_RE, "");
   out = out.replace(/\n{3,}/g, "\n\n").trim();
   return out;
 }

@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "agent_id": "s_eDSWr8EkRPfDsbgBJxa",
+  "session_id": "j8fo8AfDknnMF0Zywhbff",
+  "elapsed_ms": 60412,
+  "steps": [
+    {
+      "turn": "start",
+      "done": true,
+      "waited_ms": 25280
+    },
+    {
+      "turn": "compare",
+      "done": true,
+      "waited_ms": 34656
+    }
+  ],
+  "checks": {
+    "compare_report": true,
+    "compare_two_bash": true,
+    "compare_no_diagnostic_spiral": true,
+    "compare_no_failure_ack": true
+  },
+  "compare_bash_commands": [
+    "head -c 150000 \"/workspace/Templates/sub_roznich.md\"",
+    "head -c 200000 \"/session/r7/r7-word_smoketest.json\""
+  ],
+  "content_preview": "\n\n## Результаты сравнения\n\n**Шаблон:** Сублицензионный договор (sub_roznich.md)  \n**Документ:** Договор поставки (r7-word_smoketest.json)\n\n**Резюме:**\n- Документы имеют **разные типы**: шаблон — лицензионный договор на ПО, документ — договор поставки товаров\n- Разные стороны и правовая основа (44-ФЗ vs общий закон)\n- Структура и предмет договора принципиально отличаются\n\n| Пункт | Шаблон | Документ | Комментарий | Метка |\n|-------|--------|----------|-------------|-------|\n| Тип договора | Субли",
+  "tools": [
+    {
+      "name": "bash",
+      "command": "ls -la /workspace/Templates/"
+    },
+    {
+      "name": "bash",
+      "command": "head -c 150000 \"/workspace/Templates/sub_roznich.md\""
+    },
+    {
+      "name": "bash",
+      "command": "head -c 200000 \"/session/r7/r7-word_smoketest.json\""
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "r7-document-compare-v2-3skills",
+  "title": "R7 compare v2 — 3 skills (pre-monolith backup)",
+  "status": "approved",
+  "verifiedAt": "2026-06-29",
+  "tags": ["compare-r7-v2", "pre-monolith", "3skills", "bash-head", "r7"],
+  "sourceCase": "cases/compare-r7_v2",
+  "sourceDocs": [
+    "cases/compare-r7/docs/architecture-decisions.md",
+    "cases/doc_compare/docs/r7-plugin-data-contract.md"
+  ],
+  "prod": {
+    "agentId": "tc04UdOHJpv0YYKJjLbF8",
+    "agentTitle": "R7: сравнение документов v2",
+    "skills": [
+      {
+        "slug": "r7-compare-toolkit-v2",
+        "catalogId": "TiJiaM2vsVqmvqTAofwZA",
+        "version": "5.0.1",
+        "tools": []
+      },
+      {
+        "slug": "doc-compare-v2",
+        "catalogId": "WPzlNroFg9z16bwBAnoBL",
+        "version": "8.0.0",
+        "tools": []
+      },
+      {
+        "slug": "r7-docx-render-v2",
+        "catalogId": "8QKNjjqbYTmK212Za_pu6",
+        "version": "5.0.0",
+        "tools": ["r7_render_and_deliver_docx", "r7_render_docx"]
+      }
+    ]
+  },
+  "highlights": {
+    "architecture": "3 bound skills; activate toolkit on START; activate docx on EXPORT",
+    "compare": "2× bash head; LLM; r7.task with chatMarkdown",
+    "rejected": "peek B on START; compare_documents on prod; python pipe"
+  },
+  "snapshottedAt": "2026-06-29T12:00:00.000Z"
+}

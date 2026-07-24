@@ -1,0 +1,5 @@
+node_modules
+.dev-data
+web-ui/node_modules
+web-ui/dist
+gptz_proto.code-workspace

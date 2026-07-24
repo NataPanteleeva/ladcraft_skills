@@ -108,8 +108,7 @@ r7_fetch_disk_document({
 
 **Конец отчёта** (императив, не вопрос) — **в том же assistant-turn, до widget batch**:
 - `Чтобы вставить отчёт в документ, напишите: вставить`
-- `Чтобы скачать отчёт, напишите: скачать`
-- `Чтобы скачать отчёт в Word (.docx) на Р7-Диск, напишите: скачать docx`
+- `Чтобы скачать отчёт (в формате md), напишите: скачать`
 - `Чтобы сохранить отчёт на Р7-Диск в формате docx, напишите: сохранить на диск`
 
 **Сразу после текста отчёта и подсказок** — **второй batch того же turn, 2 tool параллельно** (единственное исключение после fetch-batch):
@@ -134,7 +133,7 @@ r7_fetch_disk_document({
 **Абсолютный запрет служебного хвоста в display:** после widget-batch нельзя печатать отдельные строки/токены `<end_turn>`, `</end_turn>`, `<invoke ...>`, `<tool_call ...>`, `</minimax:tool_call>` и любые XML/HTML-подобные хвосты. Завершение turn выполняется только состоянием ответа, не текстом.
 
 **Fallback для веб-чата (если платформа не отрисовала widget):** пользователь всё равно может запускать ACTIONS обычными сообщениями:
-`вставить`, `скачать`, `скачать html`, `скачать docx`, `сохранить на диск`.
+`вставить`, `скачать`, `скачать html`, `сохранить на диск`.
 Эти команды обрабатывай по разделу ACTIONS без требования наличия виджета.
 
 **Не** дублируй кнопки виджета отдельным списком; **не** пиши HTML виджета в display; **не** отправляй «пустой» блок с переносами.
@@ -150,8 +149,7 @@ r7_fetch_disk_document({
 | `вставить` | `r7-report-actions-s27` | `r7_prepare_report_actions({ markdown, mode: "insert" })` | `r7_task_block` **дословно** |
 | `скачать` / `скачать md` | `r7-report-actions-s27` | `r7_prepare_report_actions({ markdown, mode: "download_md" })` | `r7_task_block` **дословно** |
 | `скачать html` | `r7-report-actions-s27` | `r7_prepare_report_actions({ markdown, mode: "download_html" })` | `r7_task_block` **дословно** |
-| `скачать docx` | `r7-docx-render-s27` → `r7-save-compare-disk-s27` | `r7_render_docx({ markdown })` → `r7_save_compare_report_to_disk({ content_base64, fileName, markdown })` | `agent_message`; **без** r7.task |
-| `сохранить на диск` / `на диск` | `r7-save-compare-disk-s27` | `r7_save_compare_report_to_disk({ markdown })` | `agent_message` из tool; **не** r7.task |
+| `сохранить на диск` / `на диск` / `скачать docx` | `r7-docx-render-s27` → `r7-save-compare-disk-s27` | `r7_render_docx({ markdown })` → `r7_save_compare_report_to_disk({ content_base64, fileName, markdown })` | `agent_message`; **без** r7.task |
 
 `markdown` — текст последнего отчёта сравнения целиком (с таблицей `| Пункт | … |`). **Не** собирай CompareReport JSON вручную — `r7_render_docx` и save-навык парсят markdown сами.
 

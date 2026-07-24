@@ -47,6 +47,16 @@ body {
   overflow: hidden;
 }
 
+body.layout-side .shell-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.layout-default .shell-body {
+  overflow: hidden;
+}
+
 .shell-body {
   flex: 1;
   min-height: 0;

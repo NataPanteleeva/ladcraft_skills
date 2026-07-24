@@ -24,6 +24,8 @@ alwaysApply: false
 
 Референс скорости: «Сравнение 27» (`s_eDSWr8EkRPfDsbgBJxa`).
 
+**v2 (рекомендуется):** агент `tc04UdOHJpv0YYKJjLbF8` — [`cases/compare-r7_v2/`](../../cases/compare-r7_v2/), снимок [`r7-document-compare-v2`](../../cases/approved-variants/r7-document-compare-v2/).
+
 ## Prod ids
 
 Агент `wvccZ9WaZMDdCxfTyDGhh`, навык `TAJgJW37ybWIP5w7lmGzv` — [`cases/compare-r7/README.md`](../../cases/compare-r7/README.md).

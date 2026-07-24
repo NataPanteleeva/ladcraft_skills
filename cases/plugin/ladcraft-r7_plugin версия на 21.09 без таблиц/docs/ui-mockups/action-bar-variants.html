@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LCA — варианты панели действий</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --border: #d8dce3;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #7c3aed;
+      --primary-hover: #6d28d9;
+      --primary-soft: #ede9fe;
+      --primary-border: #c4b5fd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: #e8eaef;
+      padding: 16px;
+    }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    .intro { color: var(--muted); margin-bottom: 16px; max-width: 980px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tabs button {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .tabs button.active {
+      background: var(--primary-soft);
+      border-color: var(--primary-border);
+      color: #5b21b6;
+      font-weight: 600;
+    }
+    .stage {
+      display: none;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .stage.active { display: flex; }
+    .phone {
+      width: 360px;
+      height: 640px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .toolbar {
+      display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .toolbar .ghost {
+      border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 4px 8px; font-size: 12px;
+    }
+    .status { padding: 6px 12px; font-size: 11px; color: var(--muted); background: var(--surface); }
+    .msgs {
+      flex: 1; overflow: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0;
+    }
+    .bubble-a { color: var(--text); white-space: pre-wrap; }
+    .bubble-u {
+      align-self: flex-end; background: var(--primary-soft); padding: 8px 10px; border-radius: 8px; max-width: 90%;
+    }
+    .composer {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 8px 12px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    textarea {
+      width: 100%; min-height: 64px; resize: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px; font: inherit;
+    }
+    .send {
+      width: 100%; border: 0; background: var(--primary); color: #fff; border-radius: 8px;
+      padding: 10px; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      border: 1px solid var(--primary-border); background: #fff; color: #5b21b6;
+      border-radius: 999px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    .chip.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .chip.muted { color: var(--muted); border-color: var(--border); }
+    .actions-toggle {
+      display: flex; justify-content: space-between; align-items: center;
+      border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: #fff;
+    }
+    .actions-toggle button {
+      border: 1px solid var(--primary-border); background: var(--primary-soft); color: #5b21b6;
+      border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit;
+    }
+    .sheet {
+      position: absolute; left: 0; right: 0; bottom: 0; background: #fff;
+      border-radius: 12px 12px 0 0; box-shadow: 0 -8px 24px rgba(15,23,42,.15);
+      padding: 12px; display: none; z-index: 5;
+    }
+    .sheet.open { display: block; }
+    .sheet h3 { margin: 0 0 8px; font-size: 13px; }
+    .sheet .row-btn {
+      width: 100%; text-align: left; margin: 0 0 6px; border: 1px solid var(--border);
+      background: #fff; border-radius: 8px; padding: 10px; cursor: pointer; font: inherit;
+    }
+    .sheet .row-btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .dim { position: absolute; inset: 0; background: rgba(15,23,42,.25); display: none; z-index: 4; }
+    .dim.open { display: block; }
+    .primary-row { display: flex; gap: 6px; }
+    .primary-row .main {
+      flex: 1; border: 0; background: var(--primary); color: #fff; border-radius: 8px;
+      padding: 8px 10px; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .primary-row .more {
+      width: 40px; border: 1px solid var(--border); background: #fff; border-radius: 8px; cursor: pointer;
+    }
+    .menu {
+      position: absolute; right: 12px; bottom: 150px; background: #fff; border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: 0 8px 20px rgba(15,23,42,.12); padding: 6px; display: none; z-index: 6;
+      min-width: 160px;
+    }
+    .menu.open { display: block; }
+    .menu button {
+      display: block; width: 100%; text-align: left; border: 0; background: transparent;
+      padding: 8px 10px; cursor: pointer; font: inherit; border-radius: 6px;
+    }
+    .menu button:hover { background: var(--primary-soft); }
+    .icon-strip { display: flex; gap: 4px; }
+    .icon-btn {
+      flex: 1; border: 1px solid var(--border); background: #fff; border-radius: 8px;
+      padding: 6px 2px; cursor: pointer; font-size: 10px; color: var(--muted); text-align: center;
+    }
+    .icon-btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .icon-btn .glyph { display: block; font-size: 14px; margin-bottom: 2px; color: inherit; }
+    .note {
+      flex: 1; min-width: 280px; max-width: 420px; background: #fff; border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px;
+    }
+    .note h2 { margin: 0 0 8px; font-size: 15px; }
+    .note ul { margin: 0; padding-left: 18px; color: var(--muted); }
+    .toast {
+      position: absolute; left: 12px; right: 12px; top: 56px; background: #111827; color: #fff;
+      border-radius: 8px; padding: 8px 10px; font-size: 12px; display: none; z-index: 10;
+    }
+    .toast.show { display: block; }
+    .composer-wrap { position: relative; border-top: 1px solid var(--border); background: var(--surface); }
+    .action-tail {
+      position: absolute; top: -14px; right: 14px; z-index: 3;
+      border: 1px solid var(--primary-border); background: var(--primary-soft); color: #5b21b6;
+      border-radius: 10px 10px 4px 10px; padding: 3px 10px; font-size: 11px; font-weight: 600;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(124,58,237,.18);
+    }
+    .action-tail .dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--primary); margin-right: 5px; vertical-align: middle;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .v4-panel {
+      display: none; padding: 8px 12px 0; transform: translateY(8px); opacity: 0;
+      transition: transform .2s ease, opacity .2s ease;
+    }
+    .v4-panel.open { display: block; transform: translateY(0); opacity: 1; }
+    .chrome-compact {
+      display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .chrome-compact .ico {
+      width: 32px; height: 32px; border: 1px solid var(--border); background: #fff;
+      border-radius: 8px; cursor: pointer; font-size: 14px;
+    }
+    .chrome-info {
+      flex: 1; min-width: 0; position: relative; padding: 4px 8px; border-radius: 8px;
+    }
+    .chrome-info:hover, .chrome-info:focus-within { background: var(--primary-soft); }
+    .chrome-line {
+      font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chrome-detail {
+      display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 5;
+      background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(15,23,42,.12); padding: 8px 10px; font-size: 11px; color: var(--text);
+    }
+    .chrome-info:hover .chrome-detail, .chrome-info:focus-within .chrome-detail { display: block; }
+  </style>
+</head>
+<body>
+  <h1>Варианты панели действий (над полем ввода)</h1>
+  <p class="intro">
+    Интерактивные макеты узкого сайдбара LCA. Выберите вариант вкладкой; клик по кнопкам только показывает статус (логика Asc позже).
+    Откройте файл в браузере: <code>docs/ui-mockups/action-bar-variants.html</code>
+  </p>
+  <div class="tabs">
+    <button type="button" class="active" data-tab="v1">V1 · Чипы</button>
+    <button type="button" data-tab="v2">V2 · Bottom sheet</button>
+    <button type="button" data-tab="v3">V3 · Primary + ⋯</button>
+    <button type="button" data-tab="v4">V4 · Иконки</button>
+    <button type="button" data-tab="v4b">V4b · Хвост + всплытие</button>
+    <button type="button" data-tab="top">Top · Compact</button>
+  </div>
+
+  <!-- V1 -->
+  <section class="stage active" id="v1">
+    <div class="phone" id="phone-v1">
+      <div class="toast" data-toast></div>
+      <div class="toolbar">
+        <button class="ghost" type="button">Назад</button>
+        <button class="ghost" type="button">Выйти</button>
+      </div>
+      <div class="status">Агент: LCA · черновик готов</div>
+      <div class="msgs">
+        <div class="bubble-a"><b>Черновик (стиль Йоды):</b><br/>С плагинами для документов — следующий логичный шаг это…</div>
+        <div class="bubble-u">да</div>
+      </div>
+      <div class="composer">
+        <div class="chip-row">
+          <button class="chip primary" type="button" data-act="replace">Заменить выделение</button>
+          <button class="chip" type="button" data-act="cursor">У курсора</button>
+          <button class="chip" type="button" data-act="end">В конец</button>
+          <button class="chip muted" type="button" data-act="md">Скачать .md</button>
+          <button class="chip muted" type="button" data-act="html">Для Word</button>
+        </div>
+        <textarea placeholder="Сообщение..."></textarea>
+        <button class="send" type="button">Отправить</button>
+      </div>
+    </div>
+    <div class="note">
+      <h2>V1 — ряд чипов</h2>
+      <ul>
+        <li>Все действия сразу видны</li>
+        <li>Занимает ~2 строки при узкой ширине</li>
+        <li>Хорошо, если кнопок ≤5</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- V2 -->
+  <section class="stage" id="v2">
+    <div class="phone" id="phone-v2">
+      <div class="toast" data-toast></div>
+      <div class="dim" data-dim></div>
+      <div class="toolbar">
+        <button class="ghost" type="button">Назад</button>
+        <button class="ghost" type="button">Выйти</button>
+      </div>
+      <div class="status">Агент: LCA · черновик готов</div>
+      <div class="msgs">
+        <div class="bubble-a"><b>Черновик (стиль Йоды):</b><br/>С плагинами для документов — следующий логичный шаг это…</div>
+      </div>
+      <div class="composer">
+        <div class="actions-toggle">
+          <span style="color:var(--muted);font-size:12px">Действия с черновиком</span>
+          <button type="button" data-open-sheet>Действия ▾</button>
+        </div>
+        <textarea placeholder="Сообщение..."></textarea>
+        <button class="send" type="button">Отправить</button>
+      </div>
+      <div class="sheet" data-sheet>
+        <h3>Куда применить черновик?</h3>
+        <button class="row-btn primary" type="button" data-act="replace" data-close-sheet>Заменить выделение</button>
+        <button class="row-btn" type="button" data-act="cursor" data-close-sheet>Вставить у курсора</button>
+        <button class="row-btn" type="button" data-act="end" data-close-sheet>В конец документа</button>
+        <button class="row-btn" type="button" data-act="md" data-close-sheet>Скачать .md</button>
+        <button class="row-btn" type="button" data-act="html" data-close-sheet>Скачать для Word (.html)</button>
+      </div>
+    </div>
+    <div class="note">
+      <h2>V2 — всплывающая панель снизу</h2>
+      <ul>
+        <li>Максимум места под чат (одна полоска)</li>
+        <li>Удобно на узком сайдбаре</li>
+        <li>+1 клик до действия</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- V3 -->
+  <section class="stage" id="v3">
+    <div class="phone" id="phone-v3">
+      <div class="toast" data-toast></div>
+      <div class="toolbar">
+        <button class="ghost" type="button">Назад</button>
+        <button class="ghost" type="button">Выйти</button>
+      </div>
+      <div class="status">Агент: LCA · черновик готов</div>
+      <div class="msgs">
+        <div class="bubble-a"><b>Черновик (стиль Йоды):</b><br/>С плагинами для документов — следующий логичный шаг это…</div>
+      </div>
+      <div class="composer" style="position:relative">
+        <div class="primary-row">
+          <button class="main" type="button" data-act="replace">Заменить выделение</button>
+          <button class="more" type="button" data-toggle-menu title="Ещё">⋯</button>
+        </div>
+        <div class="menu" data-menu>
+          <button type="button" data-act="cursor" data-close-menu>У курсора</button>
+          <button type="button" data-act="end" data-close-menu>В конец</button>
+          <button type="button" data-act="md" data-close-menu>Скачать .md</button>
+          <button type="button" data-act="html" data-close-menu>Для Word</button>
+        </div>
+        <textarea placeholder="Сообщение..."></textarea>
+        <button class="send" type="button">Отправить</button>
+      </div>
+    </div>
+    <div class="note">
+      <h2>V3 — primary + меню ⋯</h2>
+      <ul>
+        <li>Главное действие в 1 клик</li>
+        <li>Мало места, secondary спрятаны</li>
+        <li>Primary берётся из proposal (replace vs paste)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- V4 -->
+  <section class="stage" id="v4">
+    <div class="phone" id="phone-v4">
+      <div class="toast" data-toast></div>
+      <div class="toolbar">
+        <button class="ghost" type="button">Назад</button>
+        <button class="ghost" type="button">Выйти</button>
+      </div>
+      <div class="status">Агент: LCA · черновик готов</div>
+      <div class="msgs">
+        <div class="bubble-a"><b>Черновик (стиль Йоды):</b><br/>С плагинами для документов — следующий логичный шаг это…</div>
+      </div>
+      <div class="composer">
+        <div class="icon-strip">
+          <button class="icon-btn primary" type="button" data-act="replace" title="Заменить выделение"><span class="glyph">⇄</span>Заменить</button>
+          <button class="icon-btn" type="button" data-act="cursor" title="У курсора"><span class="glyph">⎣</span>Курсор</button>
+          <button class="icon-btn" type="button" data-act="end" title="В конец"><span class="glyph">↓</span>Конец</button>
+          <button class="icon-btn" type="button" data-act="md" title="Скачать md"><span class="glyph">⇩</span>MD</button>
+          <button class="icon-btn" type="button" data-act="html" title="Для Word"><span class="glyph">W</span>Word</button>
+        </div>
+        <textarea placeholder="Сообщение..."></textarea>
+        <button class="send" type="button">Отправить</button>
+      </div>
+    </div>
+    <div class="note">
+      <h2>V4 — полоска иконок</h2>
+      <ul>
+        <li>Минимум высоты (~32–40px)</li>
+        <li>Нужны понятные подписи/title</li>
+        <li>Риск: иконки менее очевидны</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- V4b -->
+  <section class="stage" id="v4b">
+    <div class="phone" id="phone-v4b">
+      <div class="toast" data-toast></div>
+      <div class="toolbar">
+        <button class="ghost" type="button">Назад</button>
+        <button class="ghost" type="button">Выйти</button>
+      </div>
+      <div class="status">Агент: LCA · черновик готов</div>
+      <div class="msgs">
+        <div class="bubble-a"><b>Черновик (стиль Йоды):</b><br/>С плагинами для документов — следующий логичный шаг это…</div>
+      </div>
+      <div class="composer-wrap">
+        <button type="button" class="action-tail" data-toggle-v4b title="Действия с последним ответом"><span class="dot"></span>Действия ▴</button>
+        <div class="v4-panel" data-v4b-panel>
+          <div class="icon-strip">
+            <button class="icon-btn primary" type="button" data-act="replace"><span class="glyph">⇄</span>Заменить</button>
+            <button class="icon-btn" type="button" data-act="cursor"><span class="glyph">⎣</span>Курсор</button>
+            <button class="icon-btn" type="button" data-act="end"><span class="glyph">↓</span>Конец</button>
+            <button class="icon-btn" type="button" data-act="md"><span class="glyph">⇩</span>MD</button>
+            <button class="icon-btn" type="button" data-act="html"><span class="glyph">W</span>Word</button>
+          </div>
+        </div>
+        <div class="composer" style="border-top:0">
+          <textarea placeholder="Сообщение..."></textarea>
+          <button class="send" type="button">Отправить</button>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      <h2>V4b — выбранный (хвост + всплытие)</h2>
+      <ul>
+        <li>Шильдик всегда, если есть last AI draft</li>
+        <li>Панель всплывает (авто / клик по хвосту)</li>
+        <li>Кнопки бьют в последний результат ИИ</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Top compact -->
+  <section class="stage" id="top">
+    <div class="phone" id="phone-top">
+      <div class="toast" data-toast></div>
+      <div class="chrome-compact">
+        <button class="ico" type="button" title="Назад">←</button>
+        <button class="ico" type="button" title="Выйти">⎋</button>
+        <button class="ico" type="button" title="Синхр. документ">↻</button>
+        <div class="chrome-info" tabindex="0">
+          <div class="chrome-line"><b>LCA</b> · Готово · VFS</div>
+          <div class="chrome-detail">
+            Агент: Лингвистическая проверка текстов (LCA)<br/>
+            Плагин v0.6.7 · документ в VFS<br/>
+            Статус: Готово
+          </div>
+        </div>
+      </div>
+      <div class="msgs">
+        <div class="bubble-a">Больше места под чат: верх ~36px вместо трёх полос.</div>
+      </div>
+      <div class="composer-wrap">
+        <button type="button" class="action-tail" data-toggle-v4b><span class="dot"></span>Действия ▴</button>
+        <div class="composer" style="border-top:0;padding-top:16px">
+          <textarea placeholder="Сообщение..."></textarea>
+          <button class="send" type="button">Отправить</button>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      <h2>Top compact</h2>
+      <ul>
+        <li>Иконки ← / выйти / sync всегда</li>
+        <li>Одна строка статуса; детали по hover</li>
+        <li>+40–70px под messages</li>
+      </ul>
+    </div>
+  </section>
+
+  <script>
+    const labels = {
+      replace: "Заменить выделение → Asc replace_selection",
+      cursor: "У курсора → paste_text @ cursor",
+      end: "В конец → paste_text @ end",
+      md: "Скачать .md (локально)",
+      html: "Скачать для Word .html (локально)",
+    };
+
+    function toast(phone, text) {
+      const el = phone.querySelector("[data-toast]");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.add("show");
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.remove("show"), 1600);
+    }
+
+    document.querySelectorAll(".tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".stage").forEach((s) => s.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    document.querySelectorAll(".phone").forEach((phone) => {
+      phone.addEventListener("click", (e) => {
+        const t = e.target.closest("[data-act]");
+        if (t) toast(phone, labels[t.dataset.act] || t.dataset.act);
+
+        if (e.target.closest("[data-open-sheet]")) {
+          phone.querySelector("[data-sheet]")?.classList.add("open");
+          phone.querySelector("[data-dim]")?.classList.add("open");
+        }
+        if (e.target.closest("[data-close-sheet]") || e.target.matches("[data-dim]")) {
+          phone.querySelector("[data-sheet]")?.classList.remove("open");
+          phone.querySelector("[data-dim]")?.classList.remove("open");
+        }
+        if (e.target.closest("[data-toggle-menu]")) {
+          phone.querySelector("[data-menu]")?.classList.toggle("open");
+        }
+        if (e.target.closest("[data-close-menu]")) {
+          phone.querySelector("[data-menu]")?.classList.remove("open");
+        }
+        if (e.target.closest("[data-toggle-v4b]")) {
+          phone.querySelector("[data-v4b-panel]")?.classList.toggle("open");
+        }
+      });
+    });
+
+    // Demo auto-open on V4b
+    setTimeout(() => {
+      document.querySelector("#phone-v4b [data-v4b-panel]")?.classList.add("open");
+    }, 400);
+  </script>
+</body>
+</html>

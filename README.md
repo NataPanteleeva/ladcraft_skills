@@ -6,6 +6,7 @@
 - **Правила Cursor** — `.cursor/rules/`
   - `ladcraft-skills.mdc` — корневое правило: раскладка кейсов, manifest-first чтение канона, жёсткие инварианты навыков.
   - `ladcraft-prod-publishing.mdc` — когда и как публиковать/менять навыки и агентов на prod.
+  - `ladcraft-r7-office-api.mdc` — API редактора R7 Office: `cases/knowledge-base/r7-api-handoff/`.
 - **Курсорные скилы** — `.cursor/skills/`
   - `ladcraft-prod-publish/` — control plane на `api.ladcraft.ru`: создать/обновить навык, создать/привязать агента, задать install-конфиг (`environment.user`), модель, relations-делегирование и политику делегирования.
   - `ladcraft-agent-drive/` — data plane: гонять живого агента по API (сессия, загрузка файла, сообщение, SSE-мониторинг, история tool-calls), загружать БЗ в `/workspace` и управлять VFS.
@@ -21,7 +22,11 @@
 .pi/                корневой канон Ladcraft (НЕ дублировать по кейсам)
 cases/              кейсы: каждый — папка навыка + папки агентов
   dev_burnout_rescue/   демо-кейс «Спасатель выгоревшего разработчика»
+  knowledge-base/       общие справочники (не в .pi/, не в папке одного навыка)
+    r7-api-handoff/     API редактора R7 Office, плагин, Р7-Диск
 ```
+
+**R7 Office:** справочник API — `cases/knowledge-base/r7-api-handoff/` (правило Cursor: `ladcraft-r7-office-api.mdc`).
 
 Любая работа с навыками/агентами подчиняется канону `<repo>/.pi/`. Новый навык/агент создавай в
 `cases/<case_name>/` (см. `ladcraft-skills.mdc`).

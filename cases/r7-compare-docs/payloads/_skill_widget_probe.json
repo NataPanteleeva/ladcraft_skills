@@ -1,0 +1,10 @@
+{
+  "version": "7.0.0",
+  "toolWidget": {
+    "name": "compareActionsWidget",
+    "content": "<style>\n  .r7-compare-actions {\n    font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;\n    margin-top: 4px;\n  }\n  .r7-compare-actions-title {\n    font-size: 12px;\n    font-weight: 600;\n    color: #64748b;\n    margin: 0 0 8px;\n    text-transform: uppercase;\n    letter-spacing: 0.04em;\n  }\n  .r7-compare-actions-row {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 8px;\n  }\n  .r7-compare-actions button {\n    appearance: none;\n    border: 1px solid #cbd5e1;\n    background: #f8fafc;\n    color: #0f172a;\n    border-radius: 8px;\n    padding: 8px 12px;\n    font-size: 13px;\n    line-height: 1.2;\n    cursor: pointer;\n  }\n  .r7-compare-actions button:hover {\n    background: #e2e8f0;\n    border-color: #94a3b8;\n  }\n  .r7-compare-actions button.primary {\n    background: #1e293b;\n    border-color: #1e293b;\n    color: #fff;\n  }\n  .r7-compare-actions button.primary:hover {\n    background: #334155;\n    border-color: #334155;\n  }\n</style>\n<div class=\"r7-compare-actions\">\n  <p class=\"r7-compare-actions-title\">Действия с отчётом</p>\n  <div class=\"r7-compare-actions-row\">\n    <button type=\"button\" class=\"primary\" data-value=\"вставить\">Вставить в конец документа</button>\n    <button type=\"button\" data-value=\"скачать md\">Скачать md</button>\n    <button type=\"button\" data-value=\"скачать html\">Скачать html</button>\n    <button type=\"button\" data-value=\"сохранить на диск\">Сохранить на Р7-диск</button>\n  </div>\n</div>",
+    "description": "Кнопки действий с отчётом сравнения для плагина R7."
+  },
+  "toolWidgetType": "object",
+  "contentHasEjs": false
+}

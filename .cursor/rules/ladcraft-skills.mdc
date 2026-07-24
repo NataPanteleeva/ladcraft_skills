@@ -16,6 +16,13 @@ alwaysApply: true
   синхронизирует свой `.pi/` внутрь выбранного skills root кейса, считай корневой `<repo>/.pi/`
   основным эталоном, а локальные копии — транзиентными.
 - Легаси-кейс `lc_contract_creator/` остаётся в корне как есть; новые кейсы — только в `cases/`.
+- Кейс **`compare-r7`** (сравнение документов R7): справочный канон START/COMPARE —
+  `cases/compare-r7/docs/approved-r7-document-compare.md`; одобренный снимок monolith v2 —
+  `cases/approved-variants/r7-document-compare-v2-monolith/` (откат: `r7-document-compare-v2-3skills/`).
+- Репозиторий удачных вариантов: `cases/approved-variants/` (индекс `manifest.json`).
+- **R7 Office API (редактор, плагин, диск)** — общий пакет для всех кейсов и навыков:
+  `cases/knowledge-base/r7-api-handoff/` (индекс `README.md`). Не дублировать в папки отдельных
+  навыков. Cursor-правило: `ladcraft-r7-office-api.mdc`.
 
 Любая работа с навыками/агентами Ladcraft подчиняется канону из `<repo>/.pi/`.
 

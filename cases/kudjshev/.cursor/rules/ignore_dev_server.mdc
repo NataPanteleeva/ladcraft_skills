@@ -1,0 +1,9 @@
+---
+description: Не трогать код dev-server при работе с cursor_ladcraft
+alwaysApply: true
+---
+
+**Игнор dev-server:** папка `dev-server/` в `cursor_ladcraft` — инфраструктура (локальный сервер и web-ui).
+Агент не должен менять код внутри `dev-server/`, кроме случаев явной задачи по поддержке авторизации,
+token refresh или исправлению критичных ошибок запуска.
+Разрешено запускать команды `npm --prefix dev-server install` и `npm --prefix dev-server run dev`.

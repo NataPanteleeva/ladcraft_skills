@@ -1,0 +1,62 @@
+{
+  "ok": true,
+  "agent_id": "s_eDSWr8EkRPfDsbgBJxa",
+  "session_id": "dyVbw1im1jMOSpNpYtsMA",
+  "checks": {
+    "render": true,
+    "disk_save": true,
+    "no_deliver_docx": true,
+    "no_recompare_bash": true,
+    "no_fake_r7_task": true,
+    "disk_message": true
+  },
+  "content_preview": "\n\nОшибка сохранения на Р7-Диск: не найдена корневая папка «Мои документы». Обратитесь к администратору Р7-Диска для настройки доступа.",
+  "docx_tools": [
+    {
+      "name": "skills",
+      "command": "skills activate r7-docx-render-s27"
+    },
+    {
+      "name": "r7_render_docx",
+      "command": "r7_render_docx"
+    },
+    {
+      "name": "skills",
+      "command": "skills activate r7-save-compare-disk-s27"
+    },
+    {
+      "name": "r7_save_compare_report_to_disk",
+      "command": "r7_save_compare_report_to_disk"
+    }
+  ],
+  "tools": [
+    {
+      "name": "bash",
+      "command": "ls -la /workspace/Templates/"
+    },
+    {
+      "name": "bash",
+      "command": "head -c 1500000 \"/workspace/Templates/dogovor_postavki.md\""
+    },
+    {
+      "name": "bash",
+      "command": "head -c 2000000 \"/session/r7/r7-word_smoketest.json\""
+    },
+    {
+      "name": "skills",
+      "command": "skills activate r7-docx-render-s27"
+    },
+    {
+      "name": "r7_render_docx",
+      "command": "r7_render_docx"
+    },
+    {
+      "name": "skills",
+      "command": "skills activate r7-save-compare-disk-s27"
+    },
+    {
+      "name": "r7_save_compare_report_to_disk",
+      "command": "r7_save_compare_report_to_disk"
+    }
+  ]
+}

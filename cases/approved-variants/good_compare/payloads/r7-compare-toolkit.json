@@ -1,0 +1,14 @@
+{
+  "name": "r7-compare-toolkit",
+  "description": "R7 compare-r7: bash head A+B на COMPARE, LLM-отчёт + r7.task. Read-tools не вызывать.",
+  "skill": "## Справочник (канон кейса)\r\n\r\nПеред правкой агента или `r7-compare-toolkit` читай: **[`docs/approved-r7-document-compare.md`](../docs/approved-r7-document-compare.md)** — одобренный START (bash-список шаблонов) и COMPARE.\r\n\r\n## START\r\n\r\nСписок шаблонов на START даёт **агент через bash** (`ls -la /workspace/Templates/`), не этот навык.\r\n\r\n**2 tool параллельно** (иначе R7 обрывает run):\r\n1. `bash` → `ls -la /workspace/Templates/`\r\n2. `skills activate r7-compare-toolkit`\r\n\r\nТаблица в ответе: `| № | Название шаблона | Размер |`. Сохрани `session_file` из `mentioned.files`.\r\n\r\nЗапрещено на START: `startup_compare`; find; cat; python; doc-compare; повторный ls.\r\n\r\n## COMPARE\r\n\r\nШаблон **уже выбран** — **не** показывай список шаблонов, **не** `ls` Templates.\r\n\r\n**1 batch — 2 bash параллельно**, затем **сразу** финальный ответ (**без** дополнительных tool):\r\n\r\n```\r\nhead -c 150000 \"/workspace/Templates/{шаблон}.md\"\r\nhead -c 200000 \"<session_file из mentioned.files>\"\r\n```\r\n\r\nАльтернатива A: `cat \"/workspace/Templates/{шаблон}.md\" | head -c 150000`\r\n\r\nИз вывода B извлеки **`body.text`** из JSON (`r7-snapshot/v1`). Не вызывай load_compare_pair, prepare_compare, python3, pipe cat|python.\r\n\r\nПри обрезке — укажи в отчёте disclaimer (анализ по доступной части).\r\n\r\nПо текстам A и B — LLM-сравнение по смыслу. Игнорируй сдвиги нумерации и колонку «наличие». Типы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n**Выход в чат:** резюме + таблица до **10** критичных строк + «**Расхождений: N**» (N = полное число).\r\nЕсли критичных больше 10 — «… и ещё K (полный список в CompareReport)».\r\n\r\n**CompareReport** (`sections` — все расхождения) — в блоке `r7.task` (не `json`):\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<CompareReport одной строкой>\",\"actions\":[]}}]\r\n```\r\n\r\nCompareReport: `schema: doc-compare/v1`, `chatMarkdown` = видимый markdown.\r\n\r\n## EXPORT\r\n\r\ndocx — `r7_render_and_deliver_docx` (report из r7.task).",
+  "version": "4.0.0",
+  "tags": [
+    "document-compare",
+    "vfs",
+    "r7"
+  ],
+  "category": "productivity",
+  "icon": "document",
+  "tools": []
+}

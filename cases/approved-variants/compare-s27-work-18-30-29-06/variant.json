@@ -1,0 +1,57 @@
+{
+  "id": "compare-s27-work-18-30-29-06",
+  "label": "Work_18.30_29.06",
+  "title": "Сравнение 27 — Work_18.30_29.06",
+  "status": "approved",
+  "verifiedAt": "2026-06-29",
+  "tags": [
+    "Work_18.30_29.06",
+    "compare-s27",
+    "s27",
+    "markdown-first",
+    "bash-head",
+    "r7",
+    "ladcraft-r7"
+  ],
+  "sourceCase": "cases/compare-s27",
+  "sourceDocs": [
+    "cases/compare-r7/docs/architecture-decisions.md",
+    "cases/compare-s27/docs/ladcraft-ticket-tool-result-context.md",
+    "cases/cursor_exchange/ladcraft-r7-4B8BBCE-plugin-not-at-fault.md"
+  ],
+  "path": "compare-s27-work-18-30-29-06",
+  "prod": {
+    "agentId": "s_eDSWr8EkRPfDsbgBJxa",
+    "agentTitle": "Сравнение 27",
+    "skills": [
+      {
+        "slug": "r7-report-actions-s27",
+        "catalogId": "VXJisfG60TRXVBceXr0it",
+        "installedId": "0HZzMZTKFcqVPD7xh85f3"
+      },
+      {
+        "slug": "r7-export-compare-s27",
+        "catalogId": "sBsa3PBF1N_Hq3IWZUFug",
+        "installedId": "8AwLcWSN1SGo_U_ZKbIRy"
+      },
+      {
+        "slug": "r7-save-compare-disk-s27",
+        "catalogId": "xb_Sj95uLF1KvKPSDBA7y",
+        "installedId": "hOtJN6c7YtL8GjP8hWCFL"
+      },
+      {
+        "slug": "r7-docx-render",
+        "catalogId": "UHOuXEcDX0QYUuEXSuS8T",
+        "installedId": "Wjh8b2THRGyflAIoKY8BH",
+        "sourcePath": "cases/common_skills/r7-docx-render"
+      }
+    ]
+  },
+  "highlights": {
+    "architecture": "START bash ls only; COMPARE 2× bash head (150k/200k); markdown-only; r7.task only on ACTIONS",
+    "compare": "success criteria r7-snapshot/v1; no post-read; no CompareReport on COMPARE",
+    "smoke": "smoke_download.js ok — 2 bash, no post-read, head has snapshot, Расхождений:N",
+    "rejected": "doc-compare skill on COMPARE; r7-disk-api; load_compare_pair / skill VFS on /session/r7/"
+  },
+  "snapshottedAt": "2026-06-29T18:30:00+03:00"
+}

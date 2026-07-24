@@ -1,0 +1,12 @@
+{
+  "name": "ssh-lk-gateway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ssh2": "^1.16.0"
+  }
+}

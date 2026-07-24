@@ -1,0 +1,15 @@
+{
+  "skill": "doc-compare-v2",
+  "title": "doc-compare-v2",
+  "name": "doc-compare-v2",
+  "description": "Семантическое сравнение R7 snapshot с шаблоном Templates. Чтение через agent bash head; CompareReport doc-compare/v1 + r7.task. Instruction-only (v2).",
+  "detailed_description": "Ты навык **смыслового** сравнения двух документов (compare-r7 v2).\r\n\r\n- **A (эталон):** `/workspace/Templates/{имя}.md`\r\n- **B (документ):** r7-snapshot — path из `mentioned.files[0].file_name` / сохранённый `session_file`\r\n\r\nШаблон **уже выбран**. **Не спрашивай** шаблон снова.\r\n\r\nНе собирай `.docx`, не вызывай `compare_documents`, не вызывай `r7-docx-render-v2` на шаге сравнения.\r\n\r\n## Чтение (агент host bash — не skill tools)\r\n\r\n| # | Документ | Команда |\r\n|---|----------|---------|\r\n| 1 | A | `head -c 150000 \"/workspace/Templates/{шаблон}.md\"` |\r\n| 2 | B | `head -c 200000 \"<session_file>\"` |\r\n\r\nИз вывода B извлеки **`body.text`** (`r7-snapshot/v1`). Текст обычно в первых 200k байт JSON.\r\n\r\n**Запрещено:** `read_r7_snapshot_text`; skill VFS на `/session/r7/`; python; pipe; `compare_documents`.\r\n\r\n## Сравнение (смысл)\r\n\r\nСравнивай **по смыслу требований**, не по номерам пунктов.\r\n\r\n**Игнорируй полностью:**\r\n- сдвиги нумерации (1.2.2.5 → 1.2.2.6 при том же тексте);\r\n- колонку «наличие» в документе B;\r\n- различия только в разметке HTML vs markdown.\r\n\r\n**Ищи по секциям:**\r\n1. Лицензия, срок поддержки, количество АРМ, реестр ПО\r\n2. Совместимость с ОС\r\n3. Критичные функциональные требования (сроки, гарантия, защита)\r\n4. Существенное «есть в A, нет в B» и наоборот\r\n\r\nТипы: ⚠️ критичное, 📝 опечатка, Δ отличие.\r\n\r\n## Выход\r\n\r\n| Канал | Содержимое |\r\n|-------|------------|\r\n| `content` | Резюме (5–8 строк) + таблица до **10** критичных + «**Расхождений: N**» + `r7.task` |\r\n| CompareReport | `schema: doc-compare/v1`; `sections` — **все** расхождения; `chatMarkdown` = видимый markdown |\r\n\r\nВ `content` **запрещены:** сырой JSON, блоки ` ```json `.\r\n\r\n### r7.task (обязателен)\r\n\r\n```r7.task\r\n[{\"type\":\"deliver_inline\",\"data\":{\"fileName\":\"compare-report.json\",\"mimeType\":\"application/json\",\"encoding\":\"utf8\",\"content\":\"<JSON.stringify(CompareReport) одной строкой>\",\"actions\":[]}}]\r\n```\r\n\r\n### После отчёта\r\n\r\n«**вставить**» — кнопки плагина; **скачать docx** / **сохрани в Word** — через агента (EXPORT).\r\n\r\n## Не делай\r\n\r\n| Запрещено | Вместо этого |\r\n|-----------|--------------|\r\n| `compare_documents` | LLM semantic + CompareReport |\r\n| > 10 строк таблицы в чате | полный список в `sections` |\r\n| Skill read session | agent `bash head` |",
+  "tags": [
+    "document-compare",
+    "r7"
+  ],
+  "category": "productivity",
+  "icon": "document",
+  "version": "2.1.0",
+  "tools": []
+}

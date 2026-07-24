@@ -1,6 +1,9 @@
 # Secrets
 .env
 *.env.local
+cases/analytics_csv_select/install.defaults.json
+cases/analytics_csv_select/_skill-config-temp.json
+cases/analytics_csv_select/.sync-install-form.json
 
 # OS
 .DS_Store

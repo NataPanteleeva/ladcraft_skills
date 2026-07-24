@@ -31,7 +31,7 @@ flowchart LR
 | Блок | Путь | Документация |
 |------|------|--------------|
 | 1 | `src/transfer/` | [01-transfer-rules.md](01-transfer-rules.md) |
-| 2 | `src/main.ts`, `src/ui/`, `src/eai/session.ts` | [02-chat-rules.md](02-chat-rules.md) |
+| 2 | `src/main.ts`, `src/ui/`, `src/eai/session.ts`, `src/eai/transport.ts`, `src/eai/stream-orchestrator.ts` | [02-chat-rules.md](02-chat-rules.md) |
 | 3 | `src/apply/` | [03-apply-rules.md](03-apply-rules.md) |
 
 ## Правило изоляции

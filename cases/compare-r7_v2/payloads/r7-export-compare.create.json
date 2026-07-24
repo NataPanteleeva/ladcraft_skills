@@ -1,0 +1,109 @@
+{
+  "name": "r7-export-compare",
+  "description": "Выгрузка DOCX отчёта сравнения ТЗ в R7: upload в session VFS и deliver_file. Только после r7_render_docx. hint r7-export-compare.",
+  "skill": "Навык доставки **DOCX** для сценария compare-r7. Универсальный `r7-export` (HTML, paste, share_link) **не используй** — он на других агентах.\n\n## Когда вызывать\n\n- Пользователь: «скачай», «выгрузим», «сохрани docx»\n- **После** успешного `r7_render_docx` (skill `r7-docx-render`)\n\nНе вызывай на старте, выборе шаблона или до готового CompareReport/DOCX.\n\n## Алгоритм (ровно 1 tool)\n\n```\nr7_deliver_docx({ \"render\": <полный ответ r7_render_docx> })\n```\n\nИли: `content_base64` + `fileName` + `mimeType` из того же ответа.\n\n## Ответ агенту\n\n1. Краткий текст (1–2 предложения): файл готов.\n2. **`r7_task_block`** из ответа tool — **дословно** в сообщение (`deliver_file` с реальным `fileId`).\n\n## Запрещено\n\n- `deliver_inline` / markdown вместо DOCX для сравнения ТЗ\n- Завершать сессию без вызова `r7_deliver_docx`\n- Плейсхолдер `<uuid>` в `fileId`\n- bash `ls`/`cat` по `/workspace/out/`, curl upload\n- Имитировать `deliver_file` при `ok: false` — сообщи ошибку кратко\n\nПри `ok: false` (VFS upload) — не обещай скачивание DOCX.",
+  "version": "1.0.0",
+  "tags": [
+    "document-compare",
+    "r7",
+    "export"
+  ],
+  "category": "productivity",
+  "icon": "document",
+  "tools": [
+    {
+      "name": "r7_deliver_docx",
+      "description": "Загружает DOCX в session VFS и возвращает r7.task deliver_file с реальным fileId.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": [
+          {
+            "type": "vfs",
+            "scope": "$USER",
+            "operations": [
+              "readFile"
+            ]
+          }
+        ]
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.3,
+        "memory": 192,
+        "timeout": 120,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "content_base64": {
+              "type": "string",
+              "description": "Base64 DOCX из r7_render_docx (предпочтительно)."
+            },
+            "localPath": {
+              "type": "string",
+              "description": "Путь в skill VFS, если нет content_base64."
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "mimeType": {
+              "type": "string"
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "render": {
+              "type": "object",
+              "description": "Полный ответ r7_render_docx (альтернатива отдельным полям)."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "fileId": {
+              "type": "string"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "mimeType": {
+              "type": "string"
+            },
+            "r7_task": {
+              "type": "array"
+            },
+            "r7_task_block": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "agent_message": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "/**\r\n * Загружает DOCX в session VFS и возвращает готовый блок r7.task (deliver_file).\r\n */\r\nasync function handler(state, params) {\r\n\tconst normalized = normalizeInput(params);\r\n\tif (!normalized.ok) {\r\n\t\treturn { ok: false, error: /** @type {{ ok: false, error: string }} */ (normalized).error };\r\n\t}\r\n\tconst input = normalized.data;\r\n\r\n\tconst bytesResult = await resolveDocxBytes(state, input);\r\n\tif (!bytesResult.ok) {\r\n\t\treturn { ok: false, error: /** @type {{ ok: false, error: string }} */ (bytesResult).error };\r\n\t}\r\n\tconst bytes = bytesResult.data;\r\n\r\n\tconst upload = await uploadDocxToSessionVfs(state, {\r\n\t\tfileName: input.fileName,\r\n\t\tmimeType: input.mimeType,\r\n\t\tbytes\r\n\t});\r\n\tif (!upload.ok) {\r\n\t\treturn { ok: false, error: /** @type {{ ok: false, error: string }} */ (upload).error };\r\n\t}\r\n\r\n\tconst r7Task = buildDeliverFileTask({\r\n\t\tfileId: upload.fileId,\r\n\t\tfileName: input.fileName,\r\n\t\tmimeType: input.mimeType,\r\n\t\tactions: input.actions\r\n\t});\r\n\tconst r7TaskBlock = formatR7TaskBlock(r7Task);\r\n\r\n\treturn {\r\n\t\tok: true,\r\n\t\tfileId: upload.fileId,\r\n\t\tfileName: input.fileName,\r\n\t\tmimeType: input.mimeType,\r\n\t\tbytes: bytes.length,\r\n\t\tr7_task: r7Task,\r\n\t\tr7_task_block: r7TaskBlock,\r\n\t\tagent_message:\r\n\t\t\t`DOCX загружен в VFS: ${input.fileName} (fileId=${upload.fileId}). ` +\r\n\t\t\t'Включи в ответ пользователю блок r7.task из поля r7_task_block без изменений.'\r\n\t};\r\n}\r\n\r\n/**\r\n * @param {unknown} params\r\n * @returns {{ ok: true, data: NormalizedInput } | { ok: false, error: string }}\r\n */\r\nfunction normalizeInput(params) {\r\n\tconst raw = params && typeof params === 'object' ? /** @type {Record<string, unknown>} */ (params) : {};\r\n\r\n\tconst render =\r\n\t\traw.render && typeof raw.render === 'object'\r\n\t\t\t? /** @type {Record<string, unknown>} */ (raw.render)\r\n\t\t\t: null;\r\n\r\n\tconst renderLocalPath =\r\n\t\trender && typeof render.localPath === 'string' ? render.localPath.trim() : '';\r\n\tconst fileName = sanitizeFileName(\r\n\t\tpickString(raw.fileName, render?.fileName, renderLocalPath ? renderLocalPath.split('/').pop() : '')\r\n\t);\r\n\tconst mimeType =\r\n\t\tpickString(raw.mimeType, render?.mimeType) ||\r\n\t\t'application/vnd.openxmlformats-officedocument.wordprocessingml.document';\r\n\tconst content_base64 = pickString(raw.content_base64, render?.content_base64);\r\n\tconst localPath = pickString(raw.localPath, render?.localPath);\r\n\tconst actions = normalizeActions(raw.actions);\r\n\r\n\tif (!content_base64 && !localPath) {\r\n\t\treturn {\r\n\t\t\tok: false,\r\n\t\t\terror: 'Нужен content_base64 или localPath (из ответа r7_render_docx).'\r\n\t\t};\r\n\t}\r\n\r\n\treturn {\r\n\t\tok: true,\r\n\t\tdata: {\r\n\t\t\tfileName,\r\n\t\t\tmimeType,\r\n\t\t\tcontent_base64,\r\n\t\t\tlocalPath,\r\n\t\t\tactions\r\n\t\t}\r\n\t};\r\n}\r\n\r\n/**\r\n * @typedef {Object} NormalizedInput\r\n * @property {string} fileName\r\n * @property {string} mimeType\r\n * @property {string} content_base64\r\n * @property {string} localPath\r\n * @property {string[]} actions\r\n */\r\n\r\n/**\r\n * @param {Record<string, unknown>} state\r\n * @param {NormalizedInput} input\r\n * @returns {Promise<{ ok: true, data: Uint8Array } | { ok: false, error: string }>}\r\n */\r\nasync function resolveDocxBytes(state, input) {\r\n\tif (input.content_base64) {\r\n\t\tconst bytes = decodeBase64(input.content_base64);\r\n\t\tif (!bytes || bytes.length === 0) {\r\n\t\t\treturn { ok: false, error: 'Некорректный или пустой content_base64.' };\r\n\t\t}\r\n\t\treturn { ok: true, data: bytes };\r\n\t}\r\n\r\n\treturn readBytesFromVfs(state, input.localPath);\r\n}\r\n\r\n/**\r\n * @param {Record<string, unknown>} state\r\n * @param {string} vfsPath\r\n * @returns {Promise<{ ok: true, data: Uint8Array } | { ok: false, error: string }>}\r\n */\r\nasync function readBytesFromVfs(state, vfsPath) {\r\n\tconst vfs = getVfsAdapter(state);\r\n\tif (!vfs) {\r\n\t\treturn { ok: false, error: 'VFS недоступен для чтения localPath.' };\r\n\t}\r\n\tconst readFn = vfs.readFile ?? vfs.read;\r\n\tif (typeof readFn !== 'function') {\r\n\t\treturn { ok: false, error: 'VFS: нет readFile/read.' };\r\n\t}\r\n\ttry {\r\n\t\tconst raw = await readFn(vfsPath);\r\n\t\tconst bytes = toByteArray(raw);\r\n\t\tif (!bytes || bytes.length === 0) {\r\n\t\t\treturn {\r\n\t\t\t\tok: false,\r\n\t\t\t\terror: `Файл пуст или не найден в skill VFS: ${vfsPath}. Передай content_base64 из r7_render_docx.`\r\n\t\t\t};\r\n\t\t}\r\n\t\treturn { ok: true, data: bytes };\r\n\t} catch (err) {\r\n\t\treturn { ok: false, error: `Не удалось прочитать ${vfsPath}: ${errorMessage(err)}` };\r\n\t}\r\n}\r\n\r\n/**\r\n * @param {Record<string, unknown>} state\r\n * @param {{ fileName: string, mimeType: string, bytes: Uint8Array }} payload\r\n * @returns {Promise<{ ok: true, fileId: string } | { ok: false, error: string }>}\r\n */\r\nasync function uploadDocxToSessionVfs(state, payload) {\r\n\tconst caps =\r\n\t\tstate.capabilities && typeof state.capabilities === 'object'\r\n\t\t\t? /** @type {Record<string, unknown>} */ (state.capabilities)\r\n\t\t\t: {};\r\n\r\n\tconst vfs = getVfsAdapter(state);\r\n\tif (vfs) {\r\n\t\tconst uploadFn = pickFunction(vfs, ['upload', 'uploadFile', 'Upload']);\r\n\t\tif (uploadFn) {\r\n\t\t\tconst fileId = await tryUploadVariants(uploadFn, vfs, payload);\r\n\t\t\tif (fileId) return { ok: true, fileId };\r\n\t\t}\r\n\t}\r\n\r\n\tfor (const key of ['vfs-session', 'sessionVfs', 'agentVfs', 'session_vfs']) {\r\n\t\tconst adapter = caps[key];\r\n\t\tif (!adapter || typeof adapter !== 'object') continue;\r\n\t\tconst uploadFn = pickFunction(/** @type {Record<string, unknown>} */ (adapter), [\r\n\t\t\t'upload',\r\n\t\t\t'uploadFile',\r\n\t\t\t'Upload'\r\n\t\t]);\r\n\t\tif (!uploadFn) continue;\r\n\t\tconst fileId = await tryUploadVariants(\r\n\t\t\tuploadFn,\r\n\t\t\t/** @type {Record<string, unknown>} */ (adapter),\r\n\t\t\tpayload\r\n\t\t);\r\n\t\tif (fileId) return { ok: true, fileId };\r\n\t}\r\n\r\n\tfor (const [capKey, adapter] of Object.entries(caps)) {\r\n\t\tif (capKey === 'vfs' || !adapter || typeof adapter !== 'object') continue;\r\n\t\tconst uploadFn = pickFunction(/** @type {Record<string, unknown>} */ (adapter), [\r\n\t\t\t'upload',\r\n\t\t\t'uploadFile',\r\n\t\t\t'Upload'\r\n\t\t]);\r\n\t\tif (!uploadFn) continue;\r\n\t\tconst fileId = await tryUploadVariants(\r\n\t\t\tuploadFn,\r\n\t\t\t/** @type {Record<string, unknown>} */ (adapter),\r\n\t\t\tpayload\r\n\t\t);\r\n\t\tif (fileId) return { ok: true, fileId };\r\n\t}\r\n\r\n\treturn {\r\n\t\tok: false,\r\n\t\terror:\r\n\t\t\t'VFS upload (scope=session) недоступен в runtime. ' +\r\n\t\t\t'Обновите r7-export на Ladcraft и проверьте capability vfs/upload для session scope.'\r\n\t};\r\n}\r\n\r\n/**\r\n * @param {Function} uploadFn\r\n * @param {unknown} ctx\r\n * @param {{ fileName: string, mimeType: string, bytes: Uint8Array }} payload\r\n * @returns {Promise<string | null>}\r\n */\r\nasync function tryUploadVariants(uploadFn, ctx, payload) {\r\n\tconst base64 = toBase64(payload.bytes);\r\n\t/** @type {Record<string, unknown>[]} */\r\n\tconst variants = [\r\n\t\t{\r\n\t\t\tscope: 'session',\r\n\t\t\tfileName: payload.fileName,\r\n\t\t\tfile_name: payload.fileName,\r\n\t\t\tcontent: payload.bytes,\r\n\t\t\tdata: payload.bytes,\r\n\t\t\tmimeType: payload.mimeType,\r\n\t\t\tmime_type: payload.mimeType\r\n\t\t},\r\n\t\t{\r\n\t\t\tscope: 'session',\r\n\t\t\tfileName: payload.fileName,\r\n\t\t\tfile_name: payload.fileName,\r\n\t\t\tcontent_base64: base64,\r\n\t\t\tencoding: 'base64',\r\n\t\t\tmimeType: payload.mimeType,\r\n\t\t\tmime_type: payload.mimeType\r\n\t\t},\r\n\t\t{\r\n\t\t\tfileName: payload.fileName,\r\n\t\t\tcontent: payload.bytes,\r\n\t\t\tmimeType: payload.mimeType\r\n\t\t}\r\n\t];\r\n\r\n\tfor (const variant of variants) {\r\n\t\ttry {\r\n\t\t\tconst result = await uploadFn.call(ctx, variant);\r\n\t\t\tconst fileId = extractFileId(result);\r\n\t\t\tif (fileId) return fileId;\r\n\t\t} catch {\r\n\t\t\t/* try next variant */\r\n\t\t}\r\n\t}\r\n\treturn null;\r\n}\r\n\r\n/**\r\n * @param {unknown} result\r\n * @returns {string | null}\r\n */\r\nfunction extractFileId(result) {\r\n\tif (typeof result === 'string' && isUuid(result)) return result;\r\n\tif (!result || typeof result !== 'object') return null;\r\n\r\n\tconst record = /** @type {Record<string, unknown>} */ (result);\r\n\tconst direct = [record.file_id, record.fileId, record.id, record.uuid];\r\n\tfor (const value of direct) {\r\n\t\tif (typeof value === 'string' && isUuid(value)) return value;\r\n\t}\r\n\r\n\tconst nested = [record.data, record.file, record.result];\r\n\tfor (const node of nested) {\r\n\t\tif (!node || typeof node !== 'object') continue;\r\n\t\tconst inner = /** @type {Record<string, unknown>} */ (node);\r\n\t\tfor (const value of [inner.file_id, inner.fileId, inner.id, inner.uuid]) {\r\n\t\t\tif (typeof value === 'string' && isUuid(value)) return value;\r\n\t\t}\r\n\t}\r\n\treturn null;\r\n}\r\n\r\n/**\r\n * @param {{ fileId: string, fileName: string, mimeType: string, actions: string[] }} input\r\n * @returns {Array<{ type: string, data: Record<string, unknown> }>}\r\n */\r\nfunction buildDeliverFileTask(input) {\r\n\treturn [\r\n\t\t{\r\n\t\t\ttype: 'deliver_file',\r\n\t\t\tdata: {\r\n\t\t\t\tfileId: input.fileId,\r\n\t\t\t\tfileName: input.fileName,\r\n\t\t\t\tmimeType: input.mimeType,\r\n\t\t\t\tactions: input.actions,\r\n\t\t\t\timportAs: null\r\n\t\t\t}\r\n\t\t}\r\n\t];\r\n}\r\n\r\n/**\r\n * @param {Array<{ type: string, data: Record<string, unknown> }>} tasks\r\n * @returns {string}\r\n */\r\nfunction formatR7TaskBlock(tasks) {\r\n\treturn '```r7.task\\n' + JSON.stringify(tasks, null, 2) + '\\n```';\r\n}\r\n\r\n/**\r\n * @param {Record<string, unknown>} state\r\n * @returns {Record<string, unknown> | null}\r\n */\r\nfunction getVfsAdapter(state) {\r\n\tconst caps =\r\n\t\tstate.capabilities && typeof state.capabilities === 'object'\r\n\t\t\t? /** @type {Record<string, unknown>} */ (state.capabilities)\r\n\t\t\t: {};\r\n\tconst raw = caps.vfs;\r\n\treturn raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : null;\r\n}\r\n\r\n/**\r\n * @param {Record<string, unknown>} obj\r\n * @param {string[]} names\r\n * @returns {Function | null}\r\n */\r\nfunction pickFunction(obj, names) {\r\n\tfor (const name of names) {\r\n\t\tconst fn = obj[name];\r\n\t\tif (typeof fn === 'function') return fn;\r\n\t}\r\n\treturn null;\r\n}\r\n\r\n/**\r\n * @param {unknown} value\r\n * @returns {string[]}\r\n */\r\nfunction normalizeActions(value) {\r\n\tif (!Array.isArray(value)) return ['download'];\r\n\tconst actions = value.map(String).map((s) => s.trim()).filter(Boolean);\r\n\treturn actions.length > 0 ? actions : ['download'];\r\n}\r\n\r\n/**\r\n * @param {string} name\r\n * @returns {string}\r\n */\r\nfunction sanitizeFileName(name) {\r\n\tconst base = String(name || '').trim() || 'сравнение.docx';\r\n\treturn base.toLowerCase().endsWith('.docx') ? base : `${base}.docx`;\r\n}\r\n\r\n/**\r\n * @param {...unknown} values\r\n * @returns {string}\r\n */\r\nfunction pickString() {\r\n\tconst values = Array.from(arguments);\r\n\tfor (const value of values) {\r\n\t\tif (typeof value === 'string' && value.trim()) return value.trim();\r\n\t}\r\n\treturn '';\r\n}\r\n\r\n/**\r\n * @param {string} encoded\r\n * @returns {Uint8Array | null}\r\n */\r\nfunction decodeBase64(encoded) {\r\n\ttry {\r\n\t\tif (typeof Buffer !== 'undefined') {\r\n\t\t\treturn new Uint8Array(Buffer.from(encoded, 'base64'));\r\n\t\t}\r\n\t\tconst binary = atob(encoded);\r\n\t\tconst out = new Uint8Array(binary.length);\r\n\t\tfor (let i = 0; i < binary.length; i += 1) {\r\n\t\t\tout[i] = binary.charCodeAt(i);\r\n\t\t}\r\n\t\treturn out;\r\n\t} catch {\r\n\t\treturn null;\r\n\t}\r\n}\r\n\r\n/**\r\n * @param {Uint8Array} bytes\r\n * @returns {string}\r\n */\r\nfunction toBase64(bytes) {\r\n\tif (typeof Buffer !== 'undefined') {\r\n\t\treturn Buffer.from(bytes).toString('base64');\r\n\t}\r\n\tlet binary = '';\r\n\tfor (let i = 0; i < bytes.length; i += 1) {\r\n\t\tbinary += String.fromCharCode(bytes[i]);\r\n\t}\r\n\treturn btoa(binary);\r\n}\r\n\r\n/**\r\n * @param {unknown} raw\r\n * @returns {Uint8Array | null}\r\n */\r\nfunction toByteArray(raw) {\r\n\tif (raw == null) return null;\r\n\tif (raw instanceof Uint8Array) return raw;\r\n\tif (typeof Buffer !== 'undefined' && Buffer.isBuffer(raw)) {\r\n\t\treturn new Uint8Array(raw);\r\n\t}\r\n\tif (typeof raw === 'string') {\r\n\t\tif (!raw.length) return new Uint8Array(0);\r\n\t\treturn decodeBase64(raw) ?? new TextEncoder().encode(raw);\r\n\t}\r\n\treturn null;\r\n}\r\n\r\n/**\r\n * @param {string} value\r\n * @returns {boolean}\r\n */\r\nfunction isUuid(value) {\r\n\treturn /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);\r\n}\r\n\r\n/**\r\n * @param {unknown} value\r\n * @returns {string}\r\n */\r\nfunction errorMessage(value) {\r\n\treturn value instanceof Error ? value.message : String(value);\r\n}\n"
+    }
+  ]
+}
