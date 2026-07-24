@@ -1,7 +1,86 @@
 {
   "schema": "approved-variants/v1",
-  "updatedAt": "2026-06-28",
+  "updatedAt": "2026-07-24",
   "variants": [
+    {
+      "id": "excel-pivot-ok-14-53-24-07",
+      "title": "Excel Pivot + ladcraft-r7_new — ОК 14:53 24.07",
+      "status": "approved",
+      "verifiedAt": "2026-07-24",
+      "verifiedLabel": "ОК на 14:53 24.07",
+      "tags": ["excel-pivot", "ladcraft-r7_new", "0.6.62-sheet-callback", "ok-14-53-24-07", "cell"],
+      "sourceCase": "cases/excel_pivot_report",
+      "path": "excel-pivot-ok-14-53-24-07",
+      "prodAgentId": "UsL7iqdQLBtYpmP0s7dWF",
+      "skillBindings": ["excel_pivot_toolkit"],
+      "pluginVersion": "0.6.62-sheet-callback",
+      "summary": "ОК 14:53 24.07: плагин 0.6.62-sheet-callback + Excel Pivot agent/skill (clarify-first, sheet unlock)."
+    },
+    {
+      "id": "compare-s27-work-18-30-29-06",
+      "title": "Сравнение 27 — Work_18.30_29.06",
+      "status": "approved",
+      "verifiedAt": "2026-06-29",
+      "tags": ["Work_18.30_29.06", "compare-s27", "s27", "markdown-first", "bash-head", "r7"],
+      "sourceCase": "cases/compare-s27",
+      "path": "compare-s27-work-18-30-29-06",
+      "prodAgentId": "s_eDSWr8EkRPfDsbgBJxa",
+      "skillBindings": [
+        "r7-report-actions-s27",
+        "r7-export-compare-s27",
+        "r7-save-compare-disk-s27",
+        "r7-docx-render"
+      ],
+      "summary": "S27 markdown-first COMPARE (2× head 150k/200k, success criteria r7-snapshot/v1); 4 helper skills on ACTIONS; smoke ok 29.06 18:30."
+    },
+    {
+      "id": "r7-document-compare-v2-3skills",
+      "title": "R7 compare v2 — 3 skills (pre-monolith backup)",
+      "status": "approved",
+      "verifiedAt": "2026-06-29",
+      "tags": ["compare-r7-v2", "pre-monolith", "3skills", "bash-head", "r7"],
+      "sourceCase": "cases/compare-r7_v2",
+      "path": "r7-document-compare-v2-3skills",
+      "prodAgentId": "tc04UdOHJpv0YYKJjLbF8",
+      "skillBindings": ["r7-compare-toolkit-v2", "doc-compare-v2", "r7-docx-render-v2"],
+      "summary": "Полный снимок до monolith: 3 навыка, instruction, scripts, payloads. Откат."
+    },
+    {
+      "id": "r7-document-compare-v2-monolith",
+      "title": "R7 compare v2 — monolith skill",
+      "status": "approved",
+      "verifiedAt": "2026-06-29",
+      "tags": ["compare-r7-v2", "monolith", "bash-head", "r7"],
+      "sourceCase": "cases/compare-r7_v2",
+      "path": "r7-document-compare-v2-monolith",
+      "prodAgentId": "tc04UdOHJpv0YYKJjLbF8",
+      "skillBindings": ["doc-compare-v2"],
+      "summary": "Monolith: persist + slim r7.task + EXPORT 1 tool. ADR-007/008."
+    },
+    {
+      "id": "good_compare",
+      "title": "R7 compare — good_compare (разделённые агенты)",
+      "status": "approved",
+      "verifiedAt": "2026-06-29",
+      "tags": ["good_compare", "templates+compare", "r7", "compare", "ladcraft-r7", "bash-head"],
+      "sourceCase": "cases/compare-r7",
+      "path": "good_compare",
+      "prodAgentId": "wvccZ9WaZMDdCxfTyDGhh",
+      "skillBindings": ["r7-compare-toolkit"],
+      "summary": "Снимок r7-compare-toolkit + instruction compare-r7 (wvcc) и compare-s27 (простой промпт). Тег good_compare."
+    },
+    {
+      "id": "r7-document-compare-v2",
+      "title": "R7: сравнение документов v2 — S27 peek + LLM + docx",
+      "status": "approved",
+      "verifiedAt": "2026-06-29",
+      "tags": ["compare-r7-v2", "s27-peek", "bash-head", "r7", "ladcraft-r7"],
+      "sourceCase": "cases/compare-r7_v2",
+      "path": "r7-document-compare-v2",
+      "prodAgentId": "tc04UdOHJpv0YYKJjLbF8",
+      "skillBindings": ["r7-compare-toolkit-v2", "doc-compare-v2", "r7-docx-render-v2"],
+      "summary": "v2: bash ls + activate на START (B не читать); COMPARE 2× bash head + LLM + r7.task; docx export."
+    },
     {
       "id": "r7-document-compare-templates-compare",
       "title": "R7: сравнение документов — templates+compare",
