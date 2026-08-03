@@ -1,0 +1,175 @@
+{
+  "skill": "lca-compose",
+  "title": "lca-compose",
+  "name": "lca-compose",
+  "description": "Черновик текста (генерация / перепись / мелкая вставка) + r7.proposal blob; вставку делает плагин после «вставь»; hint lca-compose.",
+  "detailed_description": "Ты навык **составления текста** для R7 Word (генерация К-06, перепись, мелкий черновик). Один `kind=blob`.\r\n\r\n## Контракт плагина\r\n\r\n- Insertable: только под **`Черновик:`** и тот же текст в `proposal.text`.\r\n- Жанр / «Вставить?» / «Что изменилось» — **вне** Черновика и **после** fence; перед ними строка-отсечка `💬`.\r\n- Плагин не вставляет текст после `💬`. Кнопки читают proposal (иначе тело под Черновик).\r\n- На «вставь» / «да» / «замени» плагин применяет сам; если ход пришёл — краткий ack, **без** paste-tools (кроме сбоя / отсутствия proposal).\r\n- **Не** вызывай `r7_paste` / `r7_paste_text` / `r7_replace_selection` на шаге черновика.\r\n\r\n## Режим (выбери один)\r\n\r\n| Режим | Когда | Workspace | `op` |\r\n|-------|--------|-----------|------|\r\n| **generate** | создай / напиши / сгенерируй | contexts → RULES → style | `paste_text` |\r\n| **rewrite** | перепиши **выделение** / «вместо выделенного» | contexts → RULES (+ style) | `replace_selection` + `preferReplaceSelection: true` |\r\n| **rewrite-doc** | перепиши / сжми **весь** документ / стиль переписки | явный style slug, иначе format slug | `paste_text` |\r\n| **draft** | короткий фрагмент без «создай целый документ» | по необходимости | `paste_text` |\r\n| **chat** | объяснение без текста в документ | — | **без** proposal |\r\n\r\nРежим **chat**: markdown для панели — пустые строки, `**жирный**`, этапы через `##` или `-`.\r\n\r\n## Workspace (generate / rewrite)\r\n\r\n1. `bash head -c 50000 /workspace/methodology/contexts.md` → формат и стиль.\r\n2. Явный **стиль переписки** (приоритет над форматом документа):\r\n   - «для руководства» / «в тезисах» / «executive» / «краткая выжимка» → **`executive`**\r\n   - «как Йода» / «в стиле Йоды» → **`yoda`**\r\n   - «официально» / «канцелярский» / «перепиши официально» → **`official`**\r\n   - «научно» / «академический» / «перепиши научно» → **`scientific`**\r\n   - «публицистически» / «как в СМИ» / «для блога» → **`publicistic`**\r\n   - «художественно» / «литературно» / «образно» → **`literary`**\r\n   - «разговорно» / «неформально» / «по-простому» / «для чата» → **`colloquial`**\r\n   Для выбранного slug: `bash head -c 120000 /workspace/rules/{slug}/RULES.md`  \r\n   и при наличии `bash head -c 80000 /workspace/style/{slug}/sample.md`.\r\n3. Иначе формат документа: `rules/{slug}/RULES.md` и при generate — `style/{slug}/sample.md`.\r\n4. Целый документ без «замени выделение» → `paste_text`. `replace_selection` — только при явном выделении / «вместо выделенного».\r\n\r\n## Шаг A — черновик\r\n\r\n1. Только READ workspace + ответ. **Без** write-tools и ```r7.task```.\r\n2. Один блок **`Черновик:`** — полный текст для документа, **без** повтора ниже.\r\n3. Сразу Черновик (без «Читаю…», «Активирую…», «Задача — rewrite»). Вопрос «Вставить?» — **после** fence и маркера `💬`.\r\n4. В конце fence `r7.proposal` (`text` = тот же полный черновик).\r\n\r\n**В `text` / Черновик только документ:** без «Переписываю…», «Что изменилось», CTA, дублей абзацев, маркера `💬`.  \r\n`---` внутри черновика — только если это часть документа, не отсечка чата.\r\n\r\n## Стилевая перепись (Йода и др.)\r\n\r\n«перепиши …» + любой стиль из `contexts.md` (Йода, официально, научно, публицистически, художественно, разговорно, для руководства) → **полный** rewrite одним blob (`rewrite` или `rewrite-doc`), не точечные findings/SAR.  \r\nБез явного выделения — уточнить «весь документ или фрагмент?» либо `rewrite-doc`. С выделением — `replace_selection`.  \r\nПравила — `rules/{styleSlug}/RULES.md` (+ sample если есть).\r\n\r\nGenerate / rewrite-doc / draft:\r\n\r\n```r7.proposal\r\n{\"schema\":\"r7.proposal/v1\",\"kind\":\"blob\",\"op\":\"paste_text\",\"text\":\"…полный черновик…\",\"defaultPosition\":\"cursor\"}\r\n```\r\n\r\nRewrite выделения:\r\n\r\n```r7.proposal\r\n{\"schema\":\"r7.proposal/v1\",\"kind\":\"blob\",\"op\":\"replace_selection\",\"text\":\"…только новый текст…\",\"preferReplaceSelection\":true}\r\n```\r\n\r\n5. Даже при «и вставь» — сначала черновик + proposal, спроси согласие.\r\n6. Уточнения правят этот черновик/proposal без tools.\r\n7. Нет факта в snapshot → плейсхолдер или вопрос.\r\n\r\n## Оформление\r\n\r\n- Абзацы — пустая строка. Ключевые термины — `**жирный**`.\r\n- Этапы/разделы — `## 1. Название` или `**1. Название**` (не `1.`/`2.` списком через пустые строки — в чате все станут «1.»).\r\n- Не оборачивай весь черновик в `>`. Не GFM-таблицы для длинных «раздел|описание».\r\n\r\n## Шаг B\r\n\r\nAck. Rewrite выделения: пользователь должен **выделить** фрагмент. Лимит HTML ~50–100 КБ. Не описывай API редактора.",
+  "tags": [],
+  "category": "productivity",
+  "icon": "document",
+  "version": "1.3.0",
+  "tools": [
+    {
+      "name": "r7_paste",
+      "description": "Вставка сгенерированного HTML у курсора.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "html": {
+              "type": "string"
+            },
+            "data": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const p = params && typeof params === \"object\" ? params : {};\r\n  let html = \"\";\r\n  if (typeof params === \"string\") html = params;\r\n  else if (typeof p.html === \"string\") html = p.html;\r\n  else if (typeof p.data === \"string\") html = p.data;\r\n  else if (typeof p.text === \"string\") html = p.text;\r\n  html = String(html).trim();\r\n  if (!html) return { ok: false, error: \"html обязателен\" };\r\n  return { ok: true, type: \"paste\", data: html };\r\n}\n",
+      "id": "Z1uN6tnR1gYehVRw7p_7Q"
+    },
+    {
+      "name": "r7_paste_text",
+      "description": "Вставка сгенерированного plain text у курсора.",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "data": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const p = params && typeof params === \"object\" ? params : {};\r\n  let text = \"\";\r\n  if (typeof params === \"string\") text = params;\r\n  else if (typeof p.text === \"string\") text = p.text;\r\n  else if (typeof p.data === \"string\") text = p.data;\r\n  text = String(text);\r\n  if (!text) return { ok: false, error: \"text обязателен\" };\r\n  return { ok: true, type: \"paste_text\", data: text };\r\n}\n",
+      "id": "r3LO_QfgAty2VJO0g6cZq"
+    },
+    {
+      "name": "r7_replace_selection",
+      "description": "Заменяет выделение в Word (RemoveSelectedContent + paste).",
+      "runtime": "nodejs@24",
+      "capabilities": {
+        "required": []
+      },
+      "environment": {
+        "app": {},
+        "user": {}
+      },
+      "resources": {
+        "cpu": 0.2,
+        "memory": 128,
+        "timeout": 30,
+        "network": {
+          "hosts": []
+        }
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Новый текст или HTML"
+            },
+            "html": {
+              "type": "string",
+              "description": "HTML фрагмента"
+            },
+            "data": {
+              "type": "string",
+              "description": "Альтернатива text"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "function": "async function handler(state, params) {\r\n  const p = params && typeof params === \"object\" ? params : {};\r\n  let data = null;\r\n  if (typeof params === \"string\" && params.trim()) {\r\n    data = params;\r\n  } else if (typeof p.text === \"string\" && p.text.trim()) {\r\n    data = p.text;\r\n  } else if (typeof p.html === \"string\" && p.html.trim()) {\r\n    data = p.html;\r\n  } else if (typeof p.data === \"string\" && p.data.trim()) {\r\n    data = p.data;\r\n  } else if (p.data && typeof p.data === \"object\" && typeof p.data.text === \"string\") {\r\n    data = p.data.text;\r\n  } else if (p.data && typeof p.data === \"object\" && typeof p.data.data === \"string\") {\r\n    data = p.data.data;\r\n  } else if (p.data && typeof p.data === \"object\" && typeof p.data.html === \"string\") {\r\n    data = p.data.html;\r\n  }\r\n  if (data == null || data === \"\") {\r\n    return { ok: false, error: \"text/html/data обязателен\" };\r\n  }\r\n  // Always flat string in `data` — nested { data: \"…\" } caused empty paste after delete.\r\n  return {\r\n    ok: true,\r\n    type: \"replace_selection\",\r\n    data: String(data)\r\n  };\r\n}\n",
+      "id": "wZVSQYCkwDc1h_yuqeZQt"
+    }
+  ]
+}

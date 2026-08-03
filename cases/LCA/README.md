@@ -2,11 +2,17 @@
 
 Агент и навыки для плагина [`ladcraft-r7_new`](../plugin/ladcraft-r7_new/) по ТЗ [`5_agent_lingvisticheskaya_proverka_tekstov.docx`](5_agent_lingvisticheskaya_proverka_tekstov.docx).
 
+## Соответствие ТЗ
+
+Чеклист требований и план доработок: [`TZ_REQUIREMENTS_CHECKLIST.md`](TZ_REQUIREMENTS_CHECKLIST.md).
+
 ## Workspace (БЗ / методика)
 
 Канон файлов для загрузки в primary workspace агента:
 
 [`workspace/`](workspace/) — структура, правила по видам документов, образцы стиля, чек-листы, шаблоны заданий пользователя.
+
+Приёмочный датасет (docx + сценарии запросов по ФТ/ПМИ): [`acceptance/`](acceptance/).
 
 В агенте пути: `/workspace/methodology/...`, `/workspace/rules/{slug}/RULES.md`, …
 
@@ -28,18 +34,17 @@
 Если плагин пишет «Документ не в VFS / путь занят» — нажмите **«Синхр. документ»** или откройте новый чат (с плагина ≥ 0.5.5-vfs1 коллизии path устраняются sessionSeg + delete/retry).
 
 
-## Навыки
+## Навыки (5)
 
-| Навык | Роль (ТЗ / doc_handler) |
-|-------|-------------------------|
-| `lca-analyze` | саммари / вопросы (как r7-analyze) |
-| `lca-proofread` | К-05 проверка, рекомендации в чате |
-| `lca-search-replace` | опечатки, точный find/replace |
-| `lca-rewrite` | правка выделения + HTML-оформление (ФТ-03) |
-| `lca-generate` | К-06 / С-01 создание + paste |
-| `lca-chat` | диалог, мелкие вставки |
+| Навык | Роль |
+|-------|------|
+| `lca-proofread` | К-05 проверка (`findings`) + fallback X→Y |
+| `lca-compose` | генерация / перепись / черновик (`blob`) |
+| `lca-analyze` | саммари / вопросы (без вставки по умолчанию) |
 | `lca-add-comment` | комментарий рецензента |
 | `lca-cell` | ячейки Cell |
+
+Устаревшие (в `skills/_deprecated/`): `lca-generate`, `lca-rewrite`, `lca-chat`, `lca-search-replace`.
 
 **Вне MVP:** export / deliver_file.
 
@@ -49,6 +54,8 @@
 |------|------------|
 | `agent/instruction` | маршрутизация С-01/С-02 + r7.event |
 | `agent/skill-catalog.json` | slug → skill id (после publish) |
+| `agent/spravka-vozmozhnosti.md` | офлайн-справка «что умею» (плагин) |
+| `agent/spravka-kak-rabotat.md` | офлайн-справка «как работать» (плагин) |
 | `skills/lca-*` | навыки |
 
 ## Prod (ladcraft.ru)
@@ -58,16 +65,16 @@
 | Агент **Лингвистическая проверка текстов (LCA)** | `f5BwCaKDeDDG71zHJPvid` |
 | lca-analyze | `4DiaVNvLdW7onc3gRui63` |
 | lca-proofread | `VlCmY241iOBEHNY4MpsIt` |
-| lca-search-replace | `KVUxZhcRWEIVCaFrz1ULY` |
-| lca-rewrite | `L5j3OgyUKj8ZGuhS3mIPC` |
-| lca-chat | `xknIBPMrgRtWG88f5jdpR` |
-| lca-generate | `7rq2Zq6tdxTOVppcuLAlk` |
+| lca-compose | `EnTQEdwfucC1BkOdDcGFx` |
 | lca-add-comment | `FBwI3FA0yL2sgMx8LV4gx` |
 | lca-cell | `3fneoqEJj0Kkp0jTbQFH7` |
 
+Устаревшие (не биндить): lca-generate, lca-rewrite, lca-chat, lca-search-replace.
+
 Модель: `minimax-M2.7` (`4ohPFvIN0OJ48pZUR2wFk`).
 
-В плагине **ladcraft-r7_new** выберите агент `f5BwCaKDeDDG71zHJPvid`.
+В плагине **ladcraft-r7_new** (≥ `0.6.89-lca-doc-help`) выберите агент `f5BwCaKDeDDG71zHJPvid`.
+При открытии чата показывается стартовая справка LCA (редактор документов) со ссылками **Что я умею** / **Как работать** — офлайн, без LLM; текст из `agent/spravka-*.md`, не из справки таблиц.
 
 Синхронизация: `agent/.from-server.json`, `agent/skill-catalog.json`, `agent/prod.json`.
 

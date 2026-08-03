@@ -2,12 +2,12 @@
   "skill": "lca-add-comment",
   "title": "lca-add-comment",
   "name": "lca-add-comment",
-  "description": "Черновик комментария + r7.proposal comment; добавление делает плагин после одобрения; hint lca-add-comment.",
-  "detailed_description": "Добавь комментарий рецензента к открытому Word.\n\n## Шаг A\nПокажи текст комментария и якорь (выделение). **Без** `r7_add_comment`.\nВ конце:\n\n```r7.proposal\n{\"schema\":\"r7.proposal/v1\",\"kind\":\"comment\",\"text\":\"…текст комментария…\"}\n```\n\nСпроси: «Добавить комментарий? („да“ / „добавь“ / „одобряю“)».\n\n## Шаг B\nПлагин добавит комментарий к **текущему выделению**. Ты: краткий ack. Tool — только если плагин не смог.",
+  "description": "r7.proposal comment с search; текст клиента as-is; без отсебятины; hint lca-add-comment.",
+  "detailed_description": "Добавь комментарий рецензента к открытому Word.\r\n\r\n## Удаление комментариев («убери все комментарии»)\r\n\r\n**Не умеем.** На Desktop R7 нет API `RemoveComments` из плагина.  \r\nЕсли ход всё же пришёл: **одна** фраза в чат — удалить можно только вручную в панели «Комментарии» редактора.  \r\n**Запрещено:** утверждать «в snapshot нет комментариев» (комментарии Word в snapshot не видны).\r\n\r\n## Когда пользователь уже дал текст («добавь комментарий к слову X: …» / «к выделению: …»)\r\n\r\nПлагин часто применяет это **сам** без тебя. Если ход всё же пришёл:\r\n\r\n1. Возьми **точный текст после «:»** — **без правок**, без перефразирования, без «саммари» и рекомендаций.\r\n2. `search` = слово/фраза-якорь из запроса (напр. `арбитраж`). Если запрос «к выделению» и якоря нет — оставь `search` пустым: плагин вставит к текущему выделению.\r\n3. Ответ в чат — **только** коротко: якорь + текст комментария (как дал пользователь) + fence.  \r\n   **Запрещено:** «Саммари / комментарий…», «Рекомендуем…», «Готово. Комментарий добавлен», «Читаю snapshot», любые рассуждения.\r\n4. **Не** спрашивай «Добавить?» и **не** вызывай tool — вставку делает плагин.\r\n\r\n```r7.proposal\r\n{\"schema\":\"r7.proposal/v1\",\"kind\":\"comment\",\"text\":\"…текст от пользователя без изменений…\",\"search\":\"арбитраж\"}\r\n```\r\n\r\n## Когда просят «написать комментарий» без готового текста\r\n\r\n1. Предложи **одну** формулировку (1–2 предложения).\r\n2. Уточни: «Оставить так?»\r\n3. После согласия — proposal с `text` + `search`.\r\n4. **Без** tool и **без** «Готово. Комментарий добавлен» до применения плагином.\r\n\r\n## После реальной вставки плагином\r\n\r\nЕсли ход пришёл после apply: одна фраза «Готово». Иначе молчи про успех.",
   "tags": [],
   "category": "productivity",
   "icon": "document",
-  "version": "1.3.0",
+  "version": "1.5.2",
   "tools": [
     {
       "name": "r7_add_comment",
@@ -58,7 +58,7 @@
           }
         }
       },
-      "function": "async function handler(state, params) {\n  const p = params && typeof params === \"object\" ? params : {};\n  let text = \"\";\n  if (typeof p.text === \"string\") text = p.text.trim();\n  else if (typeof p.comment === \"string\") text = p.comment.trim();\n  else if (typeof params === \"string\") text = params.trim();\n  if (!text) return { ok: false, error: \"text обязателен\" };\n  return { ok: true, type: \"add_comment\", text: text, data: { text: text } };\n}\n",
+      "function": "async function handler(state, params) {\r\n  const p = params && typeof params === \"object\" ? params : {};\r\n  let text = \"\";\r\n  if (typeof p.text === \"string\") text = p.text.trim();\r\n  else if (typeof p.comment === \"string\") text = p.comment.trim();\r\n  else if (typeof params === \"string\") text = params.trim();\r\n  if (!text) return { ok: false, error: \"text обязателен\" };\r\n  return { ok: true, type: \"add_comment\", text: text, data: { text: text } };\r\n}\n",
       "id": "4zxqROkZStlcjHFATkl6U"
     }
   ]

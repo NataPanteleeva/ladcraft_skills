@@ -33,9 +33,21 @@
 ```
 Перепиши фразу в стиле Йоды: «Будущее этого мальчика является туманным». Только в чат.
 ```
-→ `lca-generate` или `lca-rewrite`, slug `yoda`, опора на `rules/yoda/RULES.md` и `style/yoda/sample.md`.
+→ `lca-compose` (rewrite), slug `yoda`, опора на `rules/yoda/RULES.md` и `style/yoda/sample.md`.
 
 ```
 Напиши два предложения как Йода: про силу привычки учиться. Вставь в документ.
 ```
-→ `lca-generate` + paste, slug `yoda`.
+→ `lca-compose` + paste после согласия, slug `yoda`.
+
+## Для руководства (executive)
+
+```
+Перепиши выделенный фрагмент для руководства: кратко, в тезисах для совещания. Только в чат.
+```
+→ `lca-compose` (rewrite), slug `executive`, опора на `rules/executive/RULES.md` и `style/executive/sample.md`.
+
+```
+Сжать текст в управленческий brief для начальства. Вставь у курсора после согласования.
+```
+→ `lca-compose`, slug `executive`.

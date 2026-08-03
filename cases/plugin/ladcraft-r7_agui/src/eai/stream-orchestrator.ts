@@ -1,0 +1,169 @@
+import {
+  getStreamingApplyText,
+  getStreamingVisibleText,
+  STREAMING_WORKING_PLACEHOLDER,
+} from "../apply/content-extract";
+import type { ChatTransport, ChatTransportCallbacks } from "./transport";
+import type { ChatMessage } from "../ui/chat";
+import { preferRicherOrAppend } from "./assistant-text-merge";
+import { isSubstantiveAssistantAnswer } from "../ui/assistant-working";
+
+export interface StreamOrchestratorHooks {
+  getMessages: () => ChatMessage[];
+  setMessageText: (messageId: string, text: string, applyText?: string) => void;
+  upsertAssistantBubble: (messageId: string) => void;
+  patchStreamingDom: (messageId: string, text: string, finalize?: boolean) => boolean;
+  renderChat: () => void;
+  isChatScreen: () => boolean;
+  /** Fired once when streamed text already looks like a usable answer. */
+  onEarlyAnswerReady?: (messageId: string, text: string) => void;
+  /** Early excel file refs from AG-UI CUSTOM. */
+  onFileReferences?: (
+    messageId: string,
+    files: import("./transport").ChatTransportFileRef[],
+  ) => void;
+}
+
+const DELTA_DEBOUNCE_MS = 160;
+
+/**
+ * Manages live assistant bubble during SSE content_delta.
+ * Transport sync flags live in ChatTransport; UI state lives here.
+ */
+export class StreamOrchestrator {
+  private messageId: string | null = null;
+  private buffer = "";
+  private deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private earlyReadyNotified = false;
+
+  constructor(
+    private readonly transport: ChatTransport,
+    private readonly hooks: StreamOrchestratorHooks,
+  ) {}
+
+  beginTurn(): void {
+    this.teardownUiState();
+    this.transport.beginTurn();
+  }
+
+  teardown(): void {
+    this.teardownUiState();
+    this.transport.unsubscribe();
+  }
+
+  subscribe(sessionId: string): void {
+    const callbacks: ChatTransportCallbacks = {
+      onMessageStart: (messageId) => this.handleMessageStart(messageId),
+      onDelta: (messageId, _delta, accumulated) => this.handleDelta(messageId, accumulated),
+      onMessageDone: (messageId) => this.handleMessageDone(messageId),
+      onFileReferences: (messageId, files) => this.hooks.onFileReferences?.(messageId, files),
+      onReplayReset: () => undefined,
+      onError: () => undefined,
+    };
+    this.transport.subscribe(sessionId, callbacks);
+  }
+
+  shouldDeferHistorySync(): boolean {
+    return this.transport.shouldDeferHistorySync();
+  }
+
+  getWaitPollMs(): number {
+    return this.transport.getWaitPollMs();
+  }
+
+  async runOnPollSync(syncFn: () => Promise<void>): Promise<void> {
+    // While SSE deltas are live, skip history — stream owns the bubble.
+    if (this.transport.shouldDeferHistorySync()) return;
+    // After message_done (or poll-only): always refresh history on each wait poll.
+    // Previously sse-hybrid synced once then skipped forever → plugin stayed empty
+    // while Ladcraft web already showed the clarification / final answer.
+    await syncFn();
+    if (this.transport.mode === "sse-hybrid" || this.transport.mode === "ag-ui") {
+      if (this.transport.needsPostStreamHistorySync()) {
+        this.transport.markHistorySynced();
+      }
+    }
+  }
+
+  private handleMessageStart(messageId: string): void {
+    if (!this.hooks.isChatScreen()) return;
+    this.messageId = messageId;
+    this.buffer = "";
+    this.earlyReadyNotified = false;
+    this.hooks.upsertAssistantBubble(messageId);
+  }
+
+  private handleDelta(messageId: string, accumulated: string): void {
+    if (!this.hooks.isChatScreen()) return;
+    if (!this.messageId) {
+      this.messageId = messageId;
+      this.hooks.upsertAssistantBubble(messageId);
+    }
+    if (this.messageId !== messageId) return;
+    // text.replaced / late rewrite: keep richer streamed markdown, only append gaps.
+    this.buffer = preferRicherOrAppend(this.buffer, accumulated);
+    this.queueDeltaPaint(messageId);
+  }
+
+  private handleMessageDone(messageId: string): void {
+    if (!this.messageId) this.messageId = messageId;
+    // Keep streamed markdown; drop streaming chrome. History later only appends questions/actions.
+    this.flushDeltaPaint(messageId, true);
+  }
+
+  private queueDeltaPaint(messageId: string): void {
+    if (this.messageId !== messageId) return;
+    if (this.deltaFlushTimer != null) return;
+    this.deltaFlushTimer = setTimeout(() => {
+      this.deltaFlushTimer = null;
+      this.flushDeltaPaint(messageId, false);
+    }, DELTA_DEBOUNCE_MS);
+  }
+
+  private flushDeltaPaint(messageId: string, finalize: boolean): void {
+    if (!this.hooks.isChatScreen()) return;
+    if (this.messageId && this.messageId !== messageId) return;
+    if (this.deltaFlushTimer != null) {
+      clearTimeout(this.deltaFlushTimer);
+      this.deltaFlushTimer = null;
+    }
+    const applyText = getStreamingApplyText(this.buffer);
+    const displayText = getStreamingVisibleText(this.buffer);
+    if (!displayText && !finalize) return;
+    const text = displayText || STREAMING_WORKING_PLACEHOLDER;
+    this.hooks.setMessageText(messageId, text, applyText || undefined);
+    const patched = this.hooks.patchStreamingDom(messageId, text, finalize);
+    if (!patched && !finalize) this.hooks.renderChat();
+    if (
+      !this.earlyReadyNotified &&
+      isSubstantiveAssistantAnswer(text) &&
+      this.hooks.onEarlyAnswerReady
+    ) {
+      this.earlyReadyNotified = true;
+      this.hooks.onEarlyAnswerReady(messageId, text);
+    }
+  }
+
+  private teardownUiState(): void {
+    if (this.deltaFlushTimer != null) {
+      clearTimeout(this.deltaFlushTimer);
+      this.deltaFlushTimer = null;
+    }
+    this.messageId = null;
+    this.buffer = "";
+    this.earlyReadyNotified = false;
+  }
+
+  /** Seed streaming placeholder before first SSE event. */
+  ensureStreamingPlaceholder(messageId: string): void {
+    const messages = this.hooks.getMessages();
+    const existing = messages.find((m) => m.id === messageId);
+    if (existing) return;
+    messages.push({
+      id: messageId,
+      role: "assistant",
+      text: STREAMING_WORKING_PLACEHOLDER,
+    });
+    this.hooks.renderChat();
+  }
+}

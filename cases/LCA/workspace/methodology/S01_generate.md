@@ -4,7 +4,7 @@
 
 1. Уточнить **вид документа**, тему, объём, тон (если не сказано).
 2. `contexts.md` → slug.
-3. Прочитать `/workspace/rules/{slug}/RULES.md` и `/workspace/style/{slug}/sample.md`.
+3. Прочитать `/workspace/rules/{slug}/RULES.md` и при наличии `/workspace/style/{slug}/sample.md`.
 4. Прочитать `/workspace/checklists/generate.md`.
 5. Сгенерировать текст по правилам и образцу.
 6. Показать **полный** текст в чате и спросить одобрение.

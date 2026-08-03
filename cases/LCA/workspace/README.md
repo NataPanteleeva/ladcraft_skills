@@ -15,8 +15,10 @@ workspace/
     README.md
     S02_check_and_edit.md
     S01_generate.md
-    contexts.md             ← каталог видов документов → папки rules/
-  rules/                    ← К-03 наборы правил по виду документа
+    contexts.md             ← каталог: виды документов + стили речи → rules/
+    error_categories.md
+    proofread_core_rules.md ← компактный канон орфо/пункт/грамм (из LORuGEC)
+  rules/                    ← К-03 наборы правил
     _index.md
     general/RULES.md
     letter/RULES.md
@@ -24,20 +26,30 @@ workspace/
     announcement/RULES.md
     report/RULES.md
     yoda/RULES.md           ← стиль речи Йоды (инверсия)
+    executive/RULES.md      ← стиль речи для руководства (brief)
+    official/RULES.md       ← официально-деловой (канцелярский)
+    scientific/RULES.md     ← научный
+    publicistic/RULES.md    ← публицистический
+    literary/RULES.md       ← художественный
+    colloquial/RULES.md     ← разговорный
   style/                    ← образцы оформления (как должно выглядеть)
     general/sample.md
     letter/sample.md
     contract/sample.md
+    announcement/sample.md
+    report/sample.md
     yoda/sample.md
+    executive/sample.md
   checklists/               ← чек-листы навыков
     proofread.md
     generate.md
-  prompts/                  ← шаблоны заданий пользователя (для тестов и мето lag)
+  prompts/                  ← шаблоны заданий пользователя (для тестов и методолога)
     user_tasks_check.md
     user_tasks_generate.md
   examples/                 ← учебные примеры до/после
     typos_before_after.md
     yoda_before_after.md
+    executive_before_after.md
 ```
 
 ## Как навыки обращаются к файлам

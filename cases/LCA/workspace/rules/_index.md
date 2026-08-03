@@ -2,13 +2,24 @@
 
 См. также `/workspace/methodology/contexts.md`.
 
-Каждый набор — файл `rules/{slug}/RULES.md` с секциями:
+Каждый набор — файл `rules/{slug}/RULES.md`.
+
+## Форматы документов
+
+`general`, `letter`, `contract`, `announcement`, `report`
+
+## Стили переписки
+
+`yoda`, `executive`, `official`, `scientific`, `publicistic`, `literary`, `colloquial`
+
+Типовые секции RULES:
 
 1. Назначение и тон  
-2. Структура текста  
+2. Структура / правила построения  
 3. Лексика и формулировки  
-4. Запреты / антипаттерны  
-5. Типовые ошибки (для proofread)  
+4. Запреты  
+5. Типовые ошибки (для proofread / rewrite)  
 6. Критерии «принято»  
 
-Шаблоном для нового вида служит `rules/general/RULES.md`.
+Шаблон формата — `rules/general/RULES.md`.  
+Шаблон стиля — `rules/executive/RULES.md` или `rules/official/RULES.md`.

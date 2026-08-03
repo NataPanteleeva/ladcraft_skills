@@ -15,10 +15,7 @@ const MODEL_ID = "4ohPFvIN0OJ48pZUR2wFk";
 const SKILL_SLUGS = [
   "lca-analyze",
   "lca-proofread",
-  "lca-search-replace",
-  "lca-rewrite",
-  "lca-chat",
-  "lca-generate",
+  "lca-compose",
   "lca-add-comment",
   "lca-cell",
 ];
